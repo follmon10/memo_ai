@@ -135,11 +135,28 @@ class ChatRequest(BaseModel):
     image_mime_type: Optional[str] = None
     model: Optional[str] = None
 
+
 # --- Endpoints ---
+
+@app.get("/")
+async def root():
+    """Serve the main index.html page"""
+    from fastapi.responses import HTMLResponse
+    import os
+    
+    # In Vercel, static files are served separately by CDN
+    # This endpoint redirects to index.html
+    if os.environ.get("VERCEL"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/index.html")
+    else:
+        # Local development - this won't be reached due to StaticFiles mount
+        return HTMLResponse(content="<h1>Memo AI</h1><p>Please access via the static file server</p>")
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
 
 @app.get("/api/debug")
 async def debug_info():
