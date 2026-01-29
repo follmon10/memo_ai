@@ -539,6 +539,33 @@ function updateDebugModeUI() {
         }
     }
     
+    // キャッシュ制御メタタグの動的追加（DEBUG_MODE時のみ）
+    if (serverDebugMode) {
+        // 既存のキャッシュ制御メタタグを削除
+        const existingCacheTags = document.querySelectorAll('meta[http-equiv="Cache-Control"], meta[http-equiv="Pragma"], meta[http-equiv="Expires"]');
+        existingCacheTags.forEach(tag => tag.remove());
+        
+        // 新しいキャッシュ制御メタタグを追加
+        const head = document.head;
+        
+        const cacheControl = document.createElement('meta');
+        cacheControl.httpEquiv = 'Cache-Control';
+        cacheControl.content = 'no-cache, no-store, must-revalidate';
+        head.appendChild(cacheControl);
+        
+        const pragma = document.createElement('meta');
+        pragma.httpEquiv = 'Pragma';
+        pragma.content = 'no-cache';
+        head.appendChild(pragma);
+        
+        const expires = document.createElement('meta');
+        expires.httpEquiv = 'Expires';
+        expires.content = '0';
+        head.appendChild(expires);
+        
+        debugLog('[DEBUG_MODE] Cache control meta tags added');
+    }
+    
     debugLog('[DEBUG_MODE] UI updated. Model selection:', serverDebugMode ? 'enabled' : 'disabled');
 }
 
@@ -868,10 +895,17 @@ function renderChatHistory() {
                 ? `[${modelInfo.provider}] ${modelInfo.name}`
                 : model;
             
-            let infoText = `Model: ${modelDisplay}`;
-            if (cost) infoText += ` | Cost: $${parseFloat(cost).toFixed(5)}`;
+            let infoText = `${modelDisplay}`;
+            if (cost) infoText += ` | $${parseFloat(cost).toFixed(5)}`;
             // usage is object {prompt_tokens, completion_tokens, total_tokens}
-            if (usage && usage.total_tokens) infoText += ` | Tokens: ${usage.total_tokens}`;
+            if (usage && usage.total_tokens) {
+                // 送信・受信トークンを個別表示
+                if (usage.prompt_tokens && usage.completion_tokens) {
+                    infoText += ` | (送信:${usage.prompt_tokens} / 受信:${usage.completion_tokens})`;
+                } else {
+                    infoText += ` | ${usage.total_tokens}`;
+                }
+            }
             
             infoDiv.textContent = infoText;
             bubble.appendChild(infoDiv);
@@ -1027,8 +1061,19 @@ async function handleChatAI() {
         // 「ページを参照」機能: オプションでターゲットの内容をコンテキストに含める
         const referenceToggle = document.getElementById('referencePageToggle');
         let referenceContext = '';
+        console.log('[Page Reference] Toggle checked:', referenceToggle?.checked);
+        console.log('[Page Reference] Current target:', currentTargetId, 'Type:', currentTargetType);
         if (referenceToggle && referenceToggle.checked && currentTargetId) {
+            console.log('[Page Reference] Fetching content for target:', currentTargetId);
             referenceContext = await fetchAndTruncatePageContent(currentTargetId, currentTargetType);
+            console.log('[Page Reference] Fetched context length:', referenceContext.length, 'chars');
+            if (referenceContext) {
+                console.log('[Page Reference] Context preview:', referenceContext.substring(0, 200) + '...');
+            } else {
+                console.log('[Page Reference] No content fetched (empty)');
+            }
+        } else {
+            console.log('[Page Reference] Skipping - toggle not checked or no target');
         }
 
         // ペイロードの構築
@@ -1254,10 +1299,13 @@ async function fetchAndTruncatePageContent(targetId, targetType) {
             ? `/api/content/database/${targetId}`
             : `/api/content/page/${targetId}`;
         
+        console.log('[fetchAndTruncatePageContent] Fetching from:', endpoint);
         const res = await fetch(endpoint);
+        console.log('[fetchAndTruncatePageContent] Response status:', res.status);
         if (!res.ok) throw new Error('コンテンツ取得失敗');
         
         const data = await res.json();
+        console.log('[fetchAndTruncatePageContent] Data type:', data.type);
         let content = '';
         
         if (data.type === 'database') {
@@ -1283,11 +1331,17 @@ async function fetchAndTruncatePageContent(targetId, targetType) {
         // 全体を2000文字に制限
         content = content.substring(0, 2000);
         
-        if (!content.trim()) return '';
+        console.log('[fetchAndTruncatePageContent] Final content length:', content.length);
+        if (!content.trim()) {
+            console.log('[fetchAndTruncatePageContent] Content is empty, returning empty string');
+            return '';
+        }
         
-        return `<参考 既存の情報>\n${content}\n</参考 既存の情報>`;
+        const formattedContext = `<参考 既存の情報>\n${content}\n</参考 既存の情報>`;
+        console.log('[fetchAndTruncatePageContent] Returning formatted context, length:', formattedContext.length);
+        return formattedContext;
     } catch(e) {
-        console.error('Failed to fetch reference content:', e);
+        console.error('[fetchAndTruncatePageContent] Error:', e);
         return '';
     }
 }
