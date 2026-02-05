@@ -86,17 +86,17 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             gemini_loaded_dynamically = True
             print(f"[INFO] ✅ Added {len(gemini_models)} Gemini models from dynamic API (pricing enriched)")
         else:
-            print(f"[WARNING] No Gemini models returned from API")
+            print("[WARNING] No Gemini models returned from API")
             gemini_loaded_dynamically = False
             
     except ImportError as e:
         print(f"[WARNING] google-genai package not installed: {e}")
-        print(f"[INFO] Install with: pip install -U google-genai")
+        print("[INFO] Install with: pip install -U google-genai")
         gemini_loaded_dynamically = False
         
     except Exception as e:
         print(f"[WARNING] Dynamic Gemini model loading failed: {type(e).__name__}: {e}")
-        print(f"[INFO] Falling back to static model list")
+        print("[INFO] Falling back to static model list")
         gemini_loaded_dynamically = False
     
     # ===== OpenAI: 動的取得（ベストプラクティス対応） =====
@@ -114,17 +114,17 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             print(f"[INFO] ✅ Added {len(openai_models)} OpenAI models from dynamic API")
         else:
             # APIキーなしの場合は静的リストにフォールバック
-            print(f"[INFO] No OpenAI models from API (static list will be used)")
+            print("[INFO] No OpenAI models from API (static list will be used)")
             openai_loaded_dynamically = False
             
     except ImportError as e:
         print(f"[WARNING] openai package not installed: {e}")
-        print(f"[INFO] Install with: pip install -U openai")
+        print("[INFO] Install with: pip install -U openai")
         openai_loaded_dynamically = False
         
     except Exception as e:
         print(f"[WARNING] Dynamic OpenAI model loading failed: {type(e).__name__}: {e}")
-        print(f"[INFO] Falling back to static model list")
+        print("[INFO] Falling back to static model list")
         openai_loaded_dynamically = False
     
 

@@ -102,7 +102,7 @@ async def test_save_page_sanitization(client):
     ページ保存時の画像データサニタイズを確認
     """
     # append_block をモック
-    with patch("api.index.append_block") as mock_append:
+    with patch("api.notion.append_block") as mock_append:
         mock_append.return_value = True
 
         # 画像データを含むリクエスト
@@ -135,7 +135,7 @@ async def test_save_database_structure(client):
     データベース保存の基本動作確認
     """
     # create_page をモック
-    with patch("api.index.create_page") as mock_create:
+    with patch("api.notion.create_page") as mock_create:
         mock_create.return_value = "https://notion.so/test-page"
 
         payload = {
@@ -233,7 +233,7 @@ async def test_save_long_text_splitting(client):
     # 2500文字のテキストを作成
     long_text = "a" * 2500
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/new-page"
 
         payload = {

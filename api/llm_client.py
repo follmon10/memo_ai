@@ -3,9 +3,8 @@ LLM Client
 LiteLLMを利用してAIプロバイダーとの通信を統一的にハンドリングするクライアントモジュールです。
 APIコールの実行、エラーハンドリング、リトライ、コスト計算などの共通処理を実装しています。
 """
-import json
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from litellm import acompletion, completion_cost
 import litellm
 

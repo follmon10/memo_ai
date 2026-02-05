@@ -6,7 +6,6 @@
 
 import pytest
 from api.services import sanitize_image_data
-from api.index import app
 from unittest.mock import patch, AsyncMock
 
 
@@ -161,7 +160,7 @@ async def test_save_boundary_1999_chars(client):
     """1999文字: 分割されないこと"""
     text = "a" * 1999
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {
@@ -187,7 +186,7 @@ async def test_save_boundary_2000_chars(client):
     """2000文字: 分割されないこと"""
     text = "a" * 2000
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {
@@ -213,7 +212,7 @@ async def test_save_boundary_2001_chars(client):
     """2001文字: 分割されること"""
     text = "a" * 2001
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {

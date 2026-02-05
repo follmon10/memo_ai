@@ -20,7 +20,7 @@ async def test_database_and_page_save_different_structures(client):
     デグレ検知: Database保存とPage保存で異なるプロパティ構造を正しく処理
     """
     # Database保存（properties）
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/db-page"
 
         db_save_resp = await client.post(
@@ -37,7 +37,7 @@ async def test_database_and_page_save_different_structures(client):
         assert "url" in db_save_resp.json()
 
     # Page保存（children）
-    with patch("api.index.append_block", new_callable=AsyncMock) as mock_append:
+    with patch("api.notion.append_block", new_callable=AsyncMock) as mock_append:
         mock_append.return_value = {"results": [{"id": "block-1"}]}
 
         page_save_resp = await client.post(

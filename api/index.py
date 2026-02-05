@@ -1,13 +1,7 @@
 import os
-import asyncio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
-import json
-from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -19,34 +13,20 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 from contextlib import asynccontextmanager
-import httpx
 
 # --- 自作モジュールのインポート ---
 # Notion APIとの通信を担当する関数群
 from api.notion import (
-    fetch_config_db,
-    get_db_schema,
-    fetch_recent_pages,
-    create_page,
-    fetch_children_list,
-    get_page_info,
-    safe_api_call,
-    append_block,
-    query_database,
     update_page_properties,
 )
 
 # AI（Gemini等）との連携を担当する関数群
-from api.ai import analyze_text_with_ai, chat_analyze_text_with_ai
 
 # 使用可能なAIモデル定義
-from api.models import get_available_models, get_text_models, get_vision_models
+from api.models import get_available_models
 
 # アプリケーションのデフォルト設定
 from api.config import (
-    DEFAULT_TEXT_MODEL,
-    DEFAULT_MULTIMODAL_MODEL,
-    DEFAULT_SYSTEM_PROMPT,
     DEBUG_MODE,
     normalize_notion_id,
 )
@@ -101,9 +81,9 @@ async def lifespan(app: FastAPI):
     # Vercel環境かローカル環境かを判定
     is_vercel = os.environ.get("VERCEL")
     if is_vercel:
-        print(f"📦 環境: Vercel (Production)")
+        print("📦 環境: Vercel (Production)")
     else:
-        print(f"💻 環境: ローカル開発環境")
+        print("💻 環境: ローカル開発環境")
 
     print(f"📁 作業ディレクトリ: {os.getcwd()}")
     print(f"🐍 Python バージョン: {os.sys.version.split()[0]}")
@@ -294,12 +274,10 @@ app.include_router(endpoints_router)
 
 # --- ヘルパー関数 (Helper Functions) ---
 # services.py から import
-from .services import sanitize_image_data, get_current_jst_str
 
 
 # --- Pydanticモデル定義 (データバリデーション用) ---
 # schemas.py から import
-from .schemas import AnalyzeRequest, SaveRequest, ChatRequest
 
 
 # --- Endpoints ---

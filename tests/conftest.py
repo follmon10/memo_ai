@@ -47,6 +47,30 @@ async def client():
         yield c
 
 
+def assert_response_ok(response, expected_status=200):
+    """
+    レスポンスのステータスコードを検証し、失敗時に詳細を出力するヘルパー
+
+    使用例:
+        response = await client.post("/api/save", json=payload)
+        assert_response_ok(response)  # 200を期待
+        assert_response_ok(response, 201)  # 201を期待
+    """
+    if response.status_code != expected_status:
+        print(f"\n{'=' * 60}")
+        print(f"[TEST FAILURE] Expected {expected_status}, got {response.status_code}")
+        print(f"[RESPONSE URL] {response.url}")
+        try:
+            detail = response.json()
+            print(f"[RESPONSE BODY] {detail}")
+        except Exception:
+            print(f"[RESPONSE TEXT] {response.text[:500]}")
+        print(f"{'=' * 60}\n")
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}"
+    )
+
+
 # --- エラー詳細出力フック ---
 
 

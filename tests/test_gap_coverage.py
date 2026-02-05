@@ -48,7 +48,7 @@ async def test_save_page_with_image_data_removal(client):
     """
     Page保存時、textに含まれる画像データが除去されること（統合テスト）
     """
-    with patch("api.index.append_block", new_callable=AsyncMock) as mock_append:
+    with patch("api.notion.append_block", new_callable=AsyncMock) as mock_append:
         mock_append.return_value = True
 
         payload = {
@@ -76,7 +76,7 @@ async def test_save_database_with_image_in_richtext(client):
     """
     Database保存時、rich_text内の画像データが除去されること（統合テスト）
     """
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {
@@ -117,7 +117,6 @@ async def test_database_content_null_properties(client):
     """
     データベースコンテンツ取得時、Nullや空配列のプロパティが適切に空文字列に変換されること
     """
-    from api.notion import query_database
 
     # Nullや空配列を含むモックデータ
     mock_results = [
@@ -200,7 +199,6 @@ async def test_analyze_timeout_handling(client):
     """
     /api/analyze でタイムアウトが発生した場合、504エラーが返ること
     """
-    from api.ai import analyze_text_with_ai
 
     with patch("api.endpoints.get_db_schema", new_callable=AsyncMock) as mock_schema:
         with patch(
@@ -268,7 +266,7 @@ async def test_save_page_truncation_10000_chars(client):
     """
     Page保存時、10000文字を超えるテキストが切り詰められ、...(Truncated)が付与されること
     """
-    with patch("api.index.append_block", new_callable=AsyncMock) as mock_append:
+    with patch("api.notion.append_block", new_callable=AsyncMock) as mock_append:
         mock_append.return_value = True
 
         # 15000文字のテキスト

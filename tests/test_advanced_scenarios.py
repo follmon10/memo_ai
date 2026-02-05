@@ -5,9 +5,7 @@
 """
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-import httpx
-import os
+from unittest.mock import patch, AsyncMock
 
 
 # ===== 1. セキュリティ & 入力検証 =====
@@ -20,7 +18,7 @@ async def test_xss_script_tag_handling(client):
     """
     XSS攻撃パターン（scriptタグ）がそのままテキストとして保存されること
     """
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {
@@ -46,7 +44,7 @@ async def test_sql_injection_pattern_handling(client):
     SQLインジェクションパターンがそのままテキストとして保存されること
     （NotionはNoSQLだが、特殊文字処理の確認）
     """
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {
@@ -87,7 +85,7 @@ async def test_notion_api_500_error_handling(client):
     """
     Notion APIが500エラーを返した場合の処理
     """
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         # Notion API 500エラーをシミュレート
         mock_create.side_effect = Exception("Notion API returned 500")
 
@@ -171,7 +169,7 @@ async def test_concurrent_save_requests():
     from httpx import AsyncClient, ASGITransport
     from api.index import app
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         async with AsyncClient(
@@ -212,7 +210,7 @@ async def test_large_payload_handling(client):
     # 5000文字のテキスト（現実的な大きさ）
     large_text = "a" * 5000
 
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/page"
 
         payload = {

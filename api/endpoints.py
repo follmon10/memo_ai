@@ -558,3 +558,141 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
         else:
             detail["message"] = "予期しないエラーが発生しました"
         raise HTTPException(status_code=500, detail=detail)
+
+
+# --- Update系エンドポイント (Step 4) ---
+
+
+@router.post("/api/save")
+async def save_endpoint(save_req: SaveRequest):
+    """
+    保存実行API
+
+    ユーザーが承認した内容を実際にNotionに書き込みます。
+    ページへの追記（ブロック追加）と、データベースへの新規アイテム作成の両方に対応しています。
+    """
+    from api.notion import append_block, create_page
+    from api.services import sanitize_image_data
+
+    try:
+        if save_req.target_type == "page":
+            content = save_req.text or "No content"
+            if "Content" in save_req.properties:
+                c_obj = save_req.properties["Content"]
+                if "rich_text" in c_obj:
+                    content = c_obj["rich_text"][0]["text"]["content"]
+
+            content = sanitize_image_data(content)
+
+            if len(content) > 10000:
+                print(
+                    f"[Save] Warning: Extremely large content ({len(content)} chars). Truncating."
+                )
+                content = content[:10000] + "\n...(Truncated)..."
+
+            success = await append_block(save_req.target_db_id, content)
+            return {"status": "success", "url": ""}
+        else:
+            sanitized_props = save_req.properties.copy()
+
+            def sanitize_val(val):
+                if isinstance(val, str):
+                    return sanitize_image_data(val)
+                return val
+
+            for key, val in sanitized_props.items():
+                if isinstance(val, dict):
+                    if "rich_text" in val and val["rich_text"]:
+                        new_rich_text = []
+                        for item in val["rich_text"]:
+                            if "text" in item:
+                                content = sanitize_val(item["text"]["content"])
+                                if len(content) > 2000:
+                                    for i in range(0, len(content), 2000):
+                                        new_item = item.copy()
+                                        new_item["text"] = item["text"].copy()
+                                        new_item["text"]["content"] = content[
+                                            i : i + 2000
+                                        ]
+                                        new_rich_text.append(new_item)
+                                else:
+                                    item["text"]["content"] = content
+                                    new_rich_text.append(item)
+                            else:
+                                new_rich_text.append(item)
+                        val["rich_text"] = new_rich_text
+
+                    if "title" in val and val["title"]:
+                        new_title = []
+                        for item in val["title"]:
+                            if "text" in item:
+                                content = sanitize_val(item["text"]["content"])
+                                if len(content) > 2000:
+                                    for i in range(0, len(content), 2000):
+                                        new_item = item.copy()
+                                        new_item["text"] = item["text"].copy()
+                                        new_item["text"]["content"] = content[
+                                            i : i + 2000
+                                        ]
+                                        new_title.append(new_item)
+                                else:
+                                    item["text"]["content"] = content
+                                    new_title.append(item)
+                            else:
+                                new_title.append(item)
+                        val["title"] = new_title
+
+            url = await create_page(save_req.target_db_id, sanitized_props)
+            return {"status": "success", "url": url}
+    except Exception as e:
+        print(f"[Save Error] {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to save to Notion: {str(e)}"
+        )
+
+
+@router.post("/api/pages/create")
+async def create_page_endpoint(request: dict):
+    """
+    新規ページの作成API
+
+    ルートページ直下に新しい空のページを作成します。
+    """
+    import os
+
+    try:
+        page_name = request.get("page_name", "").strip()
+
+        if not page_name:
+            raise HTTPException(status_code=400, detail="ページ名が必要です")
+
+        root_id = os.environ.get("NOTION_ROOT_PAGE_ID")
+        if not root_id:
+            raise HTTPException(
+                status_code=500,
+                detail="❌ NOTION_ROOT_PAGE_ID が設定されていません。",
+            )
+
+        new_page = await safe_api_call(
+            "POST",
+            "pages",
+            json={
+                "parent": {"type": "page_id", "page_id": root_id},
+                "properties": {"title": {"title": [{"text": {"content": page_name}}]}},
+            },
+        )
+
+        if not new_page:
+            raise Exception("Failed to create page")
+
+        return {"id": new_page["id"], "title": page_name, "type": "page"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Create Page Error] {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"ページ作成に失敗しました: {str(e)}"
+        )

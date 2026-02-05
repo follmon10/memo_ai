@@ -312,3 +312,17 @@ pytest -v 2>&1 | Select-Object -Last 30
 # 移行後: api/endpoints.py に移行した場合
 @patch("api.endpoints.some_function")
 ```
+
+### git checkout 使用時の注意
+
+> ⚠️ **重要**: `git checkout` でファイルを戻す前に、必ず影響範囲を確認すること。
+
+**問題となるケース**:
+- ファイルAを編集中にエラー発生
+- `git checkout A` で戻す
+- **別ファイルBへの追加コードが失われる**（Aと連動して編集していた場合）
+
+**対策**:
+1. `git diff` で現在の変更を確認
+2. 関連ファイルへの影響を把握してから戻す
+3. 部分的な修正が可能なら、checkout より手動修正を優先

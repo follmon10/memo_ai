@@ -66,7 +66,7 @@ async def test_save_response_schema(client):
     """
     デグレ検知: /api/save のレスポンス形式
     """
-    with patch("api.index.create_page", new_callable=AsyncMock) as mock_create:
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = "https://notion.so/test-page"
 
         response = await client.post(
