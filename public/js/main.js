@@ -201,16 +201,16 @@ window.showState = showState;
 function updateState(icon, message, details = null) {
     const stateDisplay = document.getElementById('stateDisplay');
     const stateIcon = document.getElementById('stateIcon');
-    const stateMessage = document.getElementById('stateMessage');
+    const stateText = document.getElementById('stateText');
     
     // UI要素がない場合はログ出力のみ
-    if (!stateDisplay || !stateIcon || !stateMessage) {
+    if (!stateDisplay || !stateIcon || !stateText) {
         console.log(`[State] ${icon} ${message}`, details);
         return;
     }
     
     stateIcon.textContent = icon;
-    stateMessage.textContent = message;
+    stateText.textContent = message;
     stateDisplay.classList.remove('hidden');
     
     console.log(`[State] ${icon} ${message}`, details);
@@ -351,10 +351,6 @@ async function handleTargetChange() {
     if (!targetId) {
         // Should not happen with new logic, but keep for safety
         App.target = { id: null, type: null, schema: null };
-        const imgTrigger = document.getElementById('imgUploadTrigger');
-        const addControls = document.getElementById('additionalControls');
-        if (imgTrigger) imgTrigger.classList.add('hidden');
-        if (addControls) addControls.classList.add('hidden');
         return;
     }
     
@@ -373,16 +369,11 @@ async function handleTargetChange() {
     console.log(`Target set: ${type} ${targetId}`, customPrompt ? '(Has custom prompt)' : '(Default prompt)');
     
     // UI更新 (optional elements may not exist)
-    const directSaveBtn = document.getElementById('directSaveBtn');
     const formContainer = document.getElementById('propertiesForm');
     const propsContainer = document.getElementById('propertiesContainer');
     const propsSection = document.getElementById('propertiesSection');
     
     if (type === 'database') {
-        if (directSaveBtn) {
-            directSaveBtn.innerHTML = '<span>保存 (DB)</span>';
-            directSaveBtn.title = 'データベースに保存';
-        }
 
         // Show properties container for DB
         if (propsContainer) propsContainer.style.display = 'block';
@@ -407,24 +398,11 @@ async function handleTargetChange() {
             console.error('Schema fetch error:', e);
         }
     } else {
-        if (directSaveBtn) {
-            directSaveBtn.innerHTML = '<span>追記 (Page)</span>';
-            directSaveBtn.title = 'ページ末尾に追記';
-        }
-        
         App.target.schema = null;
         
         // Hide properties container for Page
         if (propsContainer) propsContainer.style.display = 'none';
     }
-    
-    // コントロール表示 (optional elements)
-    const imgTrigger = document.getElementById('imgUploadTrigger');
-    const addControls = document.getElementById('additionalControls');
-    const refContainer = document.getElementById('referencePageContainer');
-    if (imgTrigger) imgTrigger.classList.remove('hidden');
-    if (addControls) addControls.classList.remove('hidden');
-    if (refContainer) refContainer.style.display = 'block';
 }
 window.handleTargetChange = handleTargetChange;
 
@@ -578,13 +556,10 @@ async function saveToDatabase() {
     });
 
     const body = {
-        database_id: App.target.id,
-        content: content,
-        properties: properties,
-        image_data: App.image.base64 ? {
-            base64: App.image.base64,
-            mime_type: App.image.mimeType
-        } : null
+        target_db_id: App.target.id,
+        target_type: 'database',
+        text: content,
+        properties: properties
     };
     
     try {
@@ -635,12 +610,10 @@ async function saveToPage() {
     setLoading(true);
     
     const body = {
-        page_id: App.target.id,
-        content: content,
-        image_data: App.image.base64 ? {
-            base64: App.image.base64,
-            mime_type: App.image.mimeType
-        } : null
+        target_db_id: App.target.id,
+        target_type: 'page',
+        text: content,
+        properties: {} // Required by backend
     };
     
     try {
@@ -689,6 +662,24 @@ async function handleDirectSave() {
     }
 }
 window.handleDirectSave = handleDirectSave;
+window.saveToDatabase = saveToDatabase;  // Export for chat.js bubble add
+window.saveToPage = saveToPage;          // Export for chat.js bubble add
+
+// --- Content Viewer (Jump to Notion) ---
+
+function openContentModal() {
+    if (!App.target.id) {
+        showToast('ターゲットを選択してください');
+        return;
+    }
+    
+    // 内蔵ビューワーではなく、ブラウザでNotionページを直接開く
+    const notionUrl = `https://www.notion.so/${App.target.id.replace(/-/g, '')}`;
+    window.open(notionUrl, '_blank');
+    
+    showToast('Notionページを開きました');
+}
+window.openContentModal = openContentModal;
 
 // --- New Page Creation ---
 
@@ -855,6 +846,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize Models
     loadAvailableModels();
+    
+    // Session Clear Button
+    const sessionClearBtn = document.getElementById('sessionClearBtn');
+    if (sessionClearBtn) {
+        sessionClearBtn.addEventListener('click', handleSessionClear);
+    }
+    
+    // View Content Button
+    const viewContentBtn = document.getElementById('viewContentBtn');
+    if (viewContentBtn) {
+        viewContentBtn.addEventListener('click', openContentModal);
+    }
 });
 
 // UI Event Handlers defined in HTML (onclick) need to be globablly accessible
@@ -960,22 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // View Content Button
     const viewContentBtn = document.getElementById('viewContentBtn');
     if (viewContentBtn) {
-        viewContentBtn.addEventListener('click', async () => {
-            if (!App.target.id) {
-                showToast('ターゲットを選択してください');
-                return;
-            }
-            showToast('ページ内容を読み込み中...');
-            try {
-                const res = await fetch(`/api/content/${App.target.id}?type=${App.target.type}`);
-                if (!res.ok) throw new Error('取得失敗');
-                const data = await res.json();
-                const content = JSON.stringify(data.content || data, null, 2).substring(0, 2000);
-                alert('ページ内容 (一部):\n\n' + content);
-            } catch (err) {
-                showToast('内容取得エラー: ' + err.message);
-            }
-        });
+        viewContentBtn.addEventListener('click', openContentModal);
     }
     
     // Model modal buttons

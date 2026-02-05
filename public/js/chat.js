@@ -159,8 +159,7 @@ export function loadChatHistory() {
                 .map(entry => {
                     let content = entry.message;
                     
-                    // 画像タグを削除して、テキストと[画像送信]のみを保持
-                    // 例: "テキスト<br>[画像送信]<img...>" -> "テキスト [画像送信]"
+                    // 画像タグを削除
                     content = content.replace(/<img[^>]*>/g, ''); // imgタグを削除
                     content = content.replace(/<br>/g, ' '); // <br>をスペースに置換
                     content = content.trim(); // 余分な空白を削除
@@ -169,7 +168,8 @@ export function loadChatHistory() {
                         role: entry.type === 'user' ? 'user' : 'assistant',
                         content: content
                     };
-                });
+                })
+                .filter(item => item.content.length > 0);
             
         } catch(e) {
             console.error("History parse error", e);
@@ -283,8 +283,11 @@ export function hideAITypingIndicator() {
     if (indicator) indicator.remove();
 }
 
-export function handleAddFromBubble(entry) {
+export async function handleAddFromBubble(entry) {
     const showToast = window.showToast;
+    const setLoading = window.setLoading;
+    const recordApiCall = window.recordApiCall;
+    const clearPreviewImage = window.clearPreviewImage;
     
     if (!entry || !entry.message) return;
     
@@ -293,18 +296,105 @@ export function handleAddFromBubble(entry) {
         return;
     }
     
-    // 入力欄にセット
-    const memoInput = document.getElementById('memoInput');
-    memoInput.value = entry.message;
+    // Clean HTML tags from message content
+    const content = entry.message
+        .replace(/<br>/g, '\n')
+        .replace(/整形案:\n/, '')
+        .replace(/<img[^>]*>/g, '')  // Remove image tags
+        .trim();
     
-    // フォームにフォーカス
-    memoInput.focus();
+    if (!content) {
+        showToast('保存する内容がありません');
+        return;
+    }
     
-    // 自動スクロール
-    memoInput.scrollIntoView({ behavior: 'smooth' });
+    setLoading(true, '保存中...');
     
-    showToast('入力欄にコピーしました。保存ボタンでNotionに追加できます。');
+    try {
+        // Determine save method based on target type
+        if (window.App.target.type === 'database') {
+            // Database: collect properties from form and save
+            const properties = {};
+            const inputs = document.querySelectorAll('#propertiesForm .prop-input');
+            
+            inputs.forEach(input => {
+                const key = input.dataset.key;
+                const type = input.dataset.type;
+                
+                if (type === 'title') {
+                    // Use bubble content for title (truncated to 100 chars)
+                    properties[key] = { title: [{ text: { content: content.substring(0, 100) } }] };
+                } else if (type === 'rich_text') {
+                    // Use form value if exists, otherwise bubble content
+                    properties[key] = { rich_text: [{ text: { content: input.value || content } }] };
+                } else if (type === 'select') {
+                    if (input.value) properties[key] = { select: { name: input.value } };
+                } else if (type === 'multi_select') {
+                    const selected = Array.from(input.selectedOptions).map(o => ({ name: o.value }));
+                    if (selected.length) properties[key] = { multi_select: selected };
+                } else if (type === 'date') {
+                    if (input.value) properties[key] = { date: { start: input.value } };
+                } else if (type === 'checkbox') {
+                    properties[key] = { checkbox: input.checked };
+                }
+            });
+            
+            
+            const payload = {
+                target_db_id: window.App.target.id,
+                target_type: 'database',
+                text: content,
+                properties: properties
+            };
+            
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await res.json().catch(() => ({}));
+            recordApiCall('/api/save', 'POST', payload, data, 
+                         res.ok ? null : (data.detail || '保存に失敗しました'), 
+                         res.status);
+            
+            if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
+            
+        } else {
+            // Page: save directly as content block
+            const payload = {
+                target_db_id: window.App.target.id,
+                target_type: 'page',
+                text: content,
+                properties: {} // Required by backend model
+            };
+            
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            
+            const data = await res.json().catch(() => ({}));
+            recordApiCall('/api/save', 'POST', payload, data,
+                         res.ok ? null : (data.detail || '保存に失敗しました'),
+                         res.status);
+            
+            if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
+        }
+        
+        showToast('✅ Notionに追加しました');
+        
+    } catch(e) {
+        console.error('[handleAddFromBubble] Error:', e);
+        showToast('エラー: ' + e.message);
+        recordApiCall('/api/save', 'POST', { content: content }, null, e.message, null);
+    } finally {
+        setLoading(false);
+    }
 }
+
 
 /**
  * メインのチャットAI送信処理
@@ -337,7 +427,7 @@ export async function handleChatAI(inputText = null) {
     let displayMessage = text;
     if (window.App.image.base64) {
         const imgTag = `<br><img src="data:${window.App.image.mimeType};base64,${window.App.image.base64}" style="max-width:100px; border-radius:4px;">`;
-        displayMessage = (text ? text + "<br>" : "") + "[画像送信]" + imgTag;
+        displayMessage = (text ? text + "<br>" : "") + imgTag;
     }
     
     addChatMessage('user', displayMessage);
@@ -351,8 +441,8 @@ export async function handleChatAI(inputText = null) {
     
     // 3. AIへのコンテキスト用にメッセージを追加
     let contextMessage = text || '';
-    if (imageToSend) {
-        contextMessage = contextMessage ? `${contextMessage} [画像送信]` : '[画像送信]';
+    if (contextMessage && imageToSend) {
+         // Keep text only if present
     }
     if (contextMessage) {
         window.App.chat.session.push({role: 'user', content: contextMessage});

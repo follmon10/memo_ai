@@ -259,16 +259,41 @@ export function setupImageHandlers() {
     const showToast = window.showToast;
     const setLoading = window.setLoading;
     
-    const mediaBtn = document.getElementById('mediaBtn');
-    const mediaInput = document.getElementById('mediaInput');
-    const captureBtn = document.getElementById('captureBtn');
+    // DOM Elements matches index.html
+    const addMediaBtn = document.getElementById('addMediaBtn');
+    const mediaMenu = document.getElementById('mediaMenu');
+    const cameraBtn = document.getElementById('cameraBtn');
+    const galleryBtn = document.getElementById('galleryBtn');
     
-    if (mediaBtn && mediaInput) {
-        mediaBtn.addEventListener('click', () => {
-            mediaInput.click();
+    // Hidden inputs
+    const imageInput = document.getElementById('imageInput'); // For Gallery
+    const cameraInput = document.getElementById('cameraInput'); // For Mobile Camera
+    
+    // 1. Toggle Media Menu
+    if (addMediaBtn && mediaMenu) {
+        addMediaBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent document click from closing immediately
+            mediaMenu.classList.toggle('hidden');
         });
         
-        mediaInput.addEventListener('change', async (e) => {
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!addMediaBtn.contains(e.target) && !mediaMenu.contains(e.target)) {
+                mediaMenu.classList.add('hidden');
+            }
+        });
+    } else {
+        console.error('[Images] Required elements (addMediaBtn or mediaMenu) not found');
+    }
+    
+    // 2. Library/Gallery Handler
+    if (galleryBtn && imageInput) {
+        galleryBtn.addEventListener('click', () => {
+            imageInput.click();
+            if (mediaMenu) mediaMenu.classList.add('hidden');
+        });
+        
+        imageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             
@@ -281,16 +306,51 @@ export function setupImageHandlers() {
                 showToast('画像の処理に失敗しました');
             } finally {
                 setLoading(false);
-                mediaInput.value = ''; // Reset
+                imageInput.value = ''; // Reset
             }
         });
     }
     
-    if (captureBtn) {
-        captureBtn.addEventListener('click', () => {
-            capturePhotoFromCamera();
+    // 3. Camera Handler
+    // Prioritize desktop custom camera modal if available, otherwise use mobile input
+    // However, index.html has capture="user" input for mobile.
+    // Let's use the custom camera modal for desktop experience as it was implemented in capturePhotoFromCamera
+    if (cameraBtn) {
+        cameraBtn.addEventListener('click', () => {
+             if (mediaMenu) mediaMenu.classList.add('hidden');
+             
+             // Check if mobile device (simple check)
+             const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+             
+             if (isMobile && cameraInput) {
+                 // Use native mobile camera input
+                 cameraInput.click();
+             } else {
+                 // Use desktop modal
+                 capturePhotoFromCamera();
+             }
         });
     }
     
-    console.log('[Images] Event handlers initialized');
+    // Handle mobile camera input changes
+    if (cameraInput) {
+        cameraInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            try {
+                setLoading(true, '画像処理中...');
+                const { base64, mimeType } = await compressImage(file);
+                setPreviewImage(base64, mimeType);
+            } catch (err) {
+                console.error('Camera processing failed:', err);
+                showToast('画像の処理に失敗しました');
+            } finally {
+                setLoading(false);
+                cameraInput.value = ''; // Reset
+            }
+        });
+    }
+    
+    console.log('[Images] Event handlers initialized (Refactored)');
 }

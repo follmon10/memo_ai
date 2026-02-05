@@ -67,9 +67,24 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         gemini_models = get_gemini_models()
         
         if gemini_models and len(gemini_models) > 0:
+            # Enrich Gemini models with pricing data from LiteLLM while preserving all other fields
+            model_cost_map = litellm.model_cost
+            for gemini_model in gemini_models:
+                model_id = gemini_model.get("id", "")
+                # Try to find pricing data in LiteLLM's cost map
+                if model_id in model_cost_map:
+                    cost_info = model_cost_map[model_id]
+                    input_cost = cost_info.get("input_cost_per_token", 0.0)
+                    output_cost = cost_info.get("output_cost_per_token", 0.0)
+                    # Update pricing while preserving all other fields (supported_methods, recommended, etc.)
+                    gemini_model["cost_per_1k_tokens"] = {
+                        "input": input_cost * 1000 if input_cost else 0.0,
+                        "output": output_cost * 1000 if output_cost else 0.0
+                    }
+            
             registry.extend(gemini_models)
             gemini_loaded_dynamically = True
-            print(f"[INFO] ✅ Added {len(gemini_models)} Gemini models from dynamic API")
+            print(f"[INFO] ✅ Added {len(gemini_models)} Gemini models from dynamic API (pricing enriched)")
         else:
             print(f"[WARNING] No Gemini models returned from API")
             gemini_loaded_dynamically = False
