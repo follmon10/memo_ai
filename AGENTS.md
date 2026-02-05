@@ -143,7 +143,75 @@ pip install -r requirements.txt
 
 ---
 
-## 7. 🚨 頻発する問題と予防策 (重要)
+## 7. テスト
+
+### テスト実行
+```bash
+# 全テスト実行
+pytest
+
+# 詳細出力
+pytest -v
+
+# 失敗テストのみ再実行
+pytest --lf
+
+# 特定マーカーのテストのみ
+pytest -m smoke      # 最重要テスト（CI用）
+pytest -m regression # 全機能カバレッジ
+pytest -m security   # セキュリティ関連
+pytest -m integration # 統合テスト
+```
+
+### テストファイル構成
+| ファイル | 目的 |
+| :--- | :--- |
+| `tests/conftest.py` | 共通フィクスチャ、マーカー登録 |
+| `tests/test_current_api.py` | 現API仕様のスモークテスト |
+| `tests/test_enhanced.py` | 境界値・ロジックテスト |
+| `tests/test_gap_coverage.py` | エラー処理・タイムアウト |
+| `tests/test_advanced_scenarios.py` | セキュリティ・並行性 |
+| `tests/test_critical_paths.py` | 統合フロー |
+| `tests/test_regression_schemas.py` | スキーマ整合性 |
+
+### エンドポイント移行時のテスト修正
+`api/index.py` から `api/endpoints.py` へ関数を移行した場合、テスト内のモックパス修正が必要:
+
+```python
+# 移行前
+with patch("api.index.fetch_children_list", ...):
+
+# 移行後
+with patch("api.endpoints.fetch_children_list", ...):
+```
+
+### ベストプラクティス (pytest + PowerShell)
+- `pytest --lf` - 失敗テストのみ再実行
+- `pytest -rf` - 失敗サマリー表示
+- `pytest --tb=short` - 短いトレースバック
+- PowerShell パイプより **直接 pytest オプション** を推奨
+
+### エラー詳細出力フック (conftest.py)
+テスト失敗時に詳細なデバッグ情報を自動出力する機能を `tests/conftest.py` に実装済み:
+
+```
+============================================================
+[DEBUG] Test FAILED: test_analyze_endpoint
+[DEBUG] Exception Type: NameError
+[DEBUG] Exception Message: name 'AnalyzeRequest' is not defined
+[DEBUG] ⚠️  Import/Module関連エラー検出!
+[DEBUG] モックパスまたはimport文を確認してください
+============================================================
+```
+
+**検出対象**:
+- `ImportError`, `ModuleNotFoundError` → モジュールimport問題
+- `AttributeError`, `NameError` → モックパスまたは関数名の問題
+- ステータスコード不一致 → リクエストスキーマの確認を促す
+
+---
+
+## 8. 🚨 頻発する問題と予防策 (重要)
 
 以下の問題が繰り返し発生しています。**必ず予防策を実施してください。**
 
@@ -178,7 +246,7 @@ pip install -r requirements.txt
 
 ---
 
-## 8. デバッグパターン
+## 9. デバッグパターン
 
 | 問題 | 調査場所 |
 | :--- | :--- |
@@ -189,7 +257,7 @@ pip install -r requirements.txt
 
 ---
 
-## 9. セキュリティ注意事項
+## 10. セキュリティ注意事項
 
 > ⚠️ **これはデモ/教育目的のアプリケーションです。**
 
@@ -200,7 +268,47 @@ pip install -r requirements.txt
 
 ---
 
-## 10. 参考資料
+## 11. 参考資料
 
 - **README.md**: セットアップガイド、トラブルシューティング、カスタマイズ案
 - **Knowledge Items (KIs)**: `.gemini/antigravity/knowledge/` 内の `memo_ai_project_guide` に詳細なアーキテクチャドキュメントあり
+
+---
+
+## 12. Windows開発環境の注意事項
+
+> **📝 開発者への指示**: よくある問題とその対処法を発見した場合は、このセクションに追記してください。
+
+### UTF-8/絵文字対応
+
+Windows環境（cp932エンコーディング）では、Pythonの`print`文で絵文字を出力するとエラーになる場合がある。
+
+**解決策**: `PYTHONUTF8=1` 環境変数を設定
+
+```python
+# conftest.py など、テスト/スクリプトの先頭で設定
+import os
+os.environ["PYTHONUTF8"] = "1"
+```
+
+### pytestデバッグのベストプラクティス
+
+```powershell
+# ❌ 悪い例（エラー情報が欠落する）
+pytest -v 2>&1 | Select-String -Pattern "(passed|failed)"
+
+# ✅ 良い例（全出力を確認）
+pytest -v 2>&1 | Select-Object -Last 30
+```
+
+### モックパス規則（APIリファクタリング時）
+
+エンドポイントを別モジュールに移行した場合、テストのモックパスも更新が必要：
+
+```python
+# 移行前: api/index.py にエンドポイントがある場合
+@patch("api.index.some_function")
+
+# 移行後: api/endpoints.py に移行した場合
+@patch("api.endpoints.some_function")
+```
