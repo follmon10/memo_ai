@@ -38,7 +38,7 @@
             <label class="menu-item toggle-item">
                 <div class="toggle-label">
                     <span class="menu-icon">📄</span>
-                    <span>AIがページを参照できる</span>
+                    <span>AIがnotionを参照できる</span>
                 </div>
                 <input type="checkbox" id="referencePageToggle" checked>
                 <span class="toggle-switch"></span>
@@ -56,29 +56,16 @@
                 <span class="menu-icon">🔄</span>
                 <span>スーパーリロード</span>
             </button>
-            <!-- ⚠️ 本番環境では以下を削除 -->
+            <!-- Debug menu item - controlled by DEBUG_MODE in script.js -->
             <div class="menu-divider"></div>
             <button id="debugInfoMenuItem" class="menu-item debug-menu-item" style="display: none;">
                 <span class="menu-icon">🔍</span>
                 <span>デバッグ情報</span>
             </button>
-            <!-- ⚠️ ここまで削除（本番環境では） -->
         </div>
 
 
-        <!-- Debug Information Panel -->
-        <!-- Debug panel removed for production -->
-        <!--
-        <div id="debugPanel" class="debug-panel">
-            <div class="debug-header">
-                <h3>🔍 デバッグ情報</h3>
-                <button id="toggleDebugBtn" class="toggle-debug-btn">非表示</button>
-            </div>
-            <div id="debugContent" class="debug-content">
-                <div class="loading-debug">読み込み中...</div>
-            </div>
-        </div>
-        -->
+
 
         <!-- チャットセクション -->
         <section class="chat-section">
@@ -281,7 +268,7 @@
                 </div>
             </div>
 
-            <!-- ⚠️ 本番環境では削除: デバッグ情報モーダル -->
+            <!-- Debug modal - controlled by DEBUG_MODE in script.js -->
             <div id="debugModal" class="modal hidden">
                 <div class="modal-content modal-wide">
                     <div class="modal-header">
@@ -320,7 +307,6 @@
                     </div>
                 </div>
             </div>
-            <!-- ⚠️ ここまで削除（本番環境では） -->
 
             <!-- ページ内容全画面モーダル -->
             <div id="contentModal" class="modal hidden">

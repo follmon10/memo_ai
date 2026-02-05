@@ -341,139 +341,131 @@ def health_check():
     return {"status": "ok"}
 
 
-# ⚠️⚠️⚠️ 警告: 本番環境では必ずこのセクションを削除またはコメントアウトしてください ⚠️⚠️⚠️
-# このエンドポイントはサーバーの内部情報を公開するため、セキュリティリスクがあります
-# 
-# 削除方法:
-#   1. このブロック全体（ここから「ここまで削除」コメントまで）を削除またはコメントアウト
-#   2. フロントエンドの設定メニューからデバッグメニューアイテムも削除（public/index.html, public/script.js, public/style.css）
-#
-# デバッグエンドポイント（開発用のみ）
-@app.get("/api/debug5075378")
-async def debug_info():
-    """
-    デバッグ情報取得エンドポイント（開発専用）
-    
-    環境変数、ファイルパス、ルート情報などを返します。
-    この情報はトラブルシューティングに役立ちますが、本番環境では公開すべきではありません。
-    """
-    # DEBUG_MODEチェック - 無効の場合は404を返す
-    if not DEBUG_MODE:
-        raise HTTPException(status_code=404, detail="Not Found")
-    
-    import sys
-    
-    # 現在時刻（JST）
-    jst = ZoneInfo("Asia/Tokyo")
-    now = datetime.now(jst)
-    timestamp = now.strftime("%Y-%m-%dT%H:%M:%S%z")
-    
-    # 環境情報
-    is_vercel = bool(os.environ.get("VERCEL"))
-    environment = {
-        "is_vercel": is_vercel,
-        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "host": "0.0.0.0" if not is_vercel else "Vercel"
-    }
-    
-    # パス情報
-    paths = {
-        "cwd": os.getcwd(),
-        "static_dir": "public",
-        "api_dir": "api"
-    }
-    
-    # ファイルシステムチェック
-    filesystem_checks = {}
-    check_paths = ["public", ".env", "README.md", "requirements.txt", "api"]
-    
-    for path in check_paths:
-        full_path = os.path.join(os.getcwd(), path)
-        exists = os.path.exists(full_path)
-        info = {"exists": exists}
+# Debug endpoint (development only) - guarded by DEBUG_MODE
+# This endpoint is only registered when DEBUG_MODE=true in the environment
+if DEBUG_MODE:
+    @app.get("/api/debug5075378")
+    async def debug_info():
+        """
+        デバッグ情報取得エンドポイント（開発専用）
         
-        if exists:
-            info["is_file"] = os.path.isfile(full_path)
-            info["is_dir"] = os.path.isdir(full_path)
-            
-            if info["is_file"]:
-                info["size"] = os.path.getsize(full_path)
-            elif info["is_dir"]:
-                try:
-                    contents = os.listdir(full_path)
-                    info["contents"] = contents[:10]  # 最初の10個のみ
-                except (PermissionError, FileNotFoundError, OSError) as e:
-                    # ディレクトリの読み取り権限がない場合やファイルシステムエラーを想定
-                    info["error"] = f"読み取りエラー: {type(e).__name__}"
+        環境変数、ファイルパス、ルート情報などを返します。
+        この情報はトラブルシューティングに役立ちますが、本番環境では公開すべきではありません。
+        DEBUG_MODE=falseの場合、このエンドポイントは登録されません。
+        """
+        import sys
         
-        filesystem_checks[path] = info
-    
-    # 環境変数（マスク済み）
-    env_vars = {}
-    important_vars = ["NOTION_API_KEY", "NOTION_ROOT_PAGE_ID", "GEMINI_API_KEY", "PORT"]
-    
-    for var in important_vars:
-        value = os.environ.get(var)
-        if value:
-            # APIキーなどは一部のみ表示
-            if "KEY" in var or "SECRET" in var:
-                masked = f"{value[:8]}...{value[-4:]}" if len(value) > 12 else "***masked***"
-                env_vars[var] = masked
-            elif "ID" in var:
-                # IDは最初の8文字のみ表示
-                masked = f"{value[:8]}..." if len(value) > 8 else value
-                env_vars[var] = masked
-            else:
-                env_vars[var] = value
-        else:
-            env_vars[var] = None
-    
-    # 登録ルート情報
-    routes = []
-    for route in app.routes:
-        route_info = {
-            "path": route.path,
-            "name": route.name,
-            "methods": list(route.methods) if hasattr(route, 'methods') else []
+        # 現在時刻（JST）
+        jst = ZoneInfo("Asia/Tokyo")
+        now = datetime.now(jst)
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+        
+        # 環境情報
+        is_vercel = bool(os.environ.get("VERCEL"))
+        environment = {
+            "is_vercel": is_vercel,
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "host": "0.0.0.0" if not is_vercel else "Vercel"
         }
-        routes.append(route_info)
-    
-    # CORS設定情報
-    cors_info = {
-        "allowed_origins": allowed_origins,
-        "is_restricted": allowed_origins != ["*"],
-        "detected_platform": None
-    }
-    
-    # プラットフォーム検出
-    if os.environ.get("VERCEL_URL"):
-        cors_info["detected_platform"] = "Vercel"
-    elif os.environ.get("CLOUD_RUN_URL"):
-        cors_info["detected_platform"] = "GCP Cloud Run"
-    elif os.environ.get("ALLOWED_ORIGINS"):
-        cors_info["detected_platform"] = "Manual (ALLOWED_ORIGINS)"
-    
-    # モデル情報（デバッグ用）
-    recommended_models = get_available_models(recommended_only=True)
-    all_models = get_available_models(recommended_only=False)
-    models_info = {
-        "recommended_count": len(recommended_models),
-        "total_count": len(all_models),
-        "raw_list": all_models  # 全モデルの生データ
-    }
-    
-    return {
-        "timestamp": timestamp,
-        "environment": environment,
-        "paths": paths,
-        "filesystem_checks": filesystem_checks,
-        "env_vars": env_vars,
-        "cors": cors_info,
-        "routes": routes[:20],  # 最初の20個のみ
-        "models": models_info
-    }
+        
+        # パス情報
+        paths = {
+            "cwd": os.getcwd(),
+            "static_dir": "public",
+            "api_dir": "api"
+        }
+        
+        # ファイルシステムチェック
+        filesystem_checks = {}
+        check_paths = ["public", ".env", "README.md", "requirements.txt", "api"]
+        
+        for path in check_paths:
+            full_path = os.path.join(os.getcwd(), path)
+            exists = os.path.exists(full_path)
+            info = {"exists": exists}
+            
+            if exists:
+                info["is_file"] = os.path.isfile(full_path)
+                info["is_dir"] = os.path.isdir(full_path)
+                
+                if info["is_file"]:
+                    info["size"] = os.path.getsize(full_path)
+                elif info["is_dir"]:
+                    try:
+                        contents = os.listdir(full_path)
+                        info["contents"] = contents[:10]  # 最初の10個のみ
+                    except (PermissionError, FileNotFoundError, OSError) as e:
+                        # ディレクトリの読み取り権限がない場合やファイルシステムエラーを想定
+                        info["error"] = f"読み取りエラー: {type(e).__name__}"
+            
+            filesystem_checks[path] = info
+        
+        # 環境変数（マスク済み）
+        env_vars = {}
+        important_vars = ["NOTION_API_KEY", "NOTION_ROOT_PAGE_ID", "GEMINI_API_KEY", "PORT"]
+        
+        for var in important_vars:
+            value = os.environ.get(var)
+            if value:
+                # APIキーなどは一部のみ表示
+                if "KEY" in var or "SECRET" in var:
+                    masked = f"{value[:8]}...{value[-4:]}" if len(value) > 12 else "***masked***"
+                    env_vars[var] = masked
+                elif "ID" in var:
+                    # IDは最初の8文字のみ表示
+                    masked = f"{value[:8]}..." if len(value) > 8 else value
+                    env_vars[var] = masked
+                else:
+                    env_vars[var] = value
+            else:
+                env_vars[var] = None
+        
+        # 登録ルート情報
+        routes = []
+        for route in app.routes:
+            route_info = {
+                "path": route.path,
+                "name": route.name,
+                "methods": list(route.methods) if hasattr(route, 'methods') else []
+            }
+            routes.append(route_info)
+        
+        # CORS設定情報
+        cors_info = {
+            "allowed_origins": allowed_origins,
+            "is_restricted": allowed_origins != ["*"],
+            "detected_platform": None
+        }
+        
+        # プラットフォーム検出
+        if os.environ.get("VERCEL_URL"):
+            cors_info["detected_platform"] = "Vercel"
+        elif os.environ.get("CLOUD_RUN_URL"):
+            cors_info["detected_platform"] = "GCP Cloud Run"
+        elif os.environ.get("ALLOWED_ORIGINS"):
+            cors_info["detected_platform"] = "Manual (ALLOWED_ORIGINS)"
+        
+        # モデル情報（デバッグ用）
+        recommended_models = get_available_models(recommended_only=True)
+        all_models = get_available_models(recommended_only=False)
+        models_info = {
+            "recommended_count": len(recommended_models),
+            "total_count": len(all_models),
+            "raw_list": all_models  # 全モデルの生データ
+        }
+        
+        return {
+            "timestamp": timestamp,
+            "environment": environment,
+            "paths": paths,
+            "filesystem_checks": filesystem_checks,
+            "env_vars": env_vars,
+            "cors": cors_info,
+            "routes": routes[:20],  # 最初の20個のみ
+            "models": models_info
+        }
 
-# ⚠️⚠️⚠️ ここまで削除（本番環境では） ⚠️⚠️⚠️
+# End of DEBUG_MODE section
 
 
 @app.get("/api/config")
@@ -516,8 +508,14 @@ async def get_models(all: bool = False):
         all: True の場合、全モデルを返す。False（デフォルト）の場合、推奨モデルのみ。
     """
     try:
-        # recommended_only = not all
-        all_models = get_available_models(recommended_only=not all)
+        from fastapi.concurrency import run_in_threadpool
+        
+        # モデル探索は外部API呼び出しを含む重い処理（かつ同期関数）なので、
+        # スレッドプールで実行してメインループをブロックしないようにします。
+        # これにより、Notion読み込みなどの他のリクエストが待たされるのを防ぎます。
+        all_models = await run_in_threadpool(get_available_models, recommended_only=not all)
+        
+        # 以下のフィルタリング等はメモリ上の処理なので高速
         text_only = get_text_models()
         vision_capable = get_vision_models()
         

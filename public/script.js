@@ -76,7 +76,7 @@ let promptOriginalValue = '';
 function debugLog(...args) { if (App.debug.enabled) console.log(...args); }
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // === 初期化処理 (Initialization) ===
     // HTML要素の取得とイベントリスナーの設定を行います。
 
@@ -256,10 +256,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. チャット履歴読み込み
     loadChatHistory();
     
-    // 6. ターゲット読み込み
-    loadTargets(appSelector);
+    // 6. ターゲット読み込み (Critical path: prioritize this)
+    await loadTargets(appSelector);
     
-    // 7. Load Models
+    // 7. Load Models (Background loading)
     loadAvailableModels();
     
     // 7.5 Load Settings
