@@ -52,8 +52,8 @@ def get_gemini_models() -> List[Dict[str, Any]]:
         
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            print("[WARNING] GEMINI_API_KEY not set, using fallback models")
-            return _get_fallback_gemini_models()
+            print("[WARNING] GEMINI_API_KEY not set")
+            return []
         
         max_retries = 3
         models = []
@@ -64,28 +64,47 @@ def get_gemini_models() -> List[Dict[str, Any]]:
                 client = genai.Client(api_key=api_key)
                 
                 # client.models.list()でモデル一覧を取得（全モデル）
+                # 
+                # ===== Gemini API レスポンスフォーマット (2024_12+) =====
+                # 新SDKバージョンでは以下の属性が利用可能:
+                # - name: モデルID (例: "models/gemini-2.5-flash")
+                # - display_name: 表示名
+                # - description: モデルの説明
+                # - supported_actions: サポートされている機能のリスト (NEW)
+                #   旧SDKでは supported_generation_methods
+                #   例: ['generateContent', 'streamGenerateContent', ...]
+                # - input_token_limit: 入力トークン制限
+                # - output_token_limit: 出力トークン制限
+                # - temperature, top_k, top_p: デフォルトパラメータ
+                # - thinking: Thinking機能のサポート (一部モデルのみ)
+                # - endpoints: 利用可能なエンドポイント
+                # - labels: モデルのラベル・タグ
+                # その他: checkpoints, tuned_model_info, default_checkpoint_id, etc.
+                # =====================================================
                 for model in client.models.list():
-                    if not hasattr(model, 'supported_generation_methods'):
+                    # 新SDKではsupported_actions、旧SDKではsupported_generation_methods
+                    methods = getattr(model, 'supported_actions', None)
+                    if methods is None:
+                        methods = getattr(model, 'supported_generation_methods', None)
+                    if methods is None:
                         continue
                         
                     model_name = model.name.split('/')[-1]  # "models/gemini-pro" -> "gemini-pro"
-                    methods = model.supported_generation_methods
                     
                     # チャット用途（generateContent）かどうかで推奨判定
                     is_recommended = 'generateContent' in methods
                     
-                    # Vision対応の判定
-                    supports_vision = any(pattern in model_name.lower() for pattern in [
-                        'flash', 'pro', 'vision', 'image'
-                    ])
-                    
-                    # モデルタイプの判定
-                    if 'generateImage' in methods or 'image' in model_name.lower():
-                        model_type = "画像生成"
-                    elif 'generateAudio' in methods or 'audio' in model_name.lower():
-                        model_type = "音声生成"
-                    else:
-                        model_type = "チャット"
+                    # Vision対応の判定: モデルのメタデータから判定
+                    # Gemini APIはinput_token_limitやsupported_modesで判定可能
+                    # フォールバック: generateContentがある場合は基本的にVision対応と仮定
+                    supports_vision = False
+                    if hasattr(model, 'supported_modes'):
+                        # 新しいAPIではsupported_modesで判定
+                        supports_vision = any('vision' in str(mode).lower() for mode in model.supported_modes)
+                    elif 'generateContent' in methods:
+                        # generateContentがあればマルチモーダル（Vision対応）の可能性が高い
+                        # ただし、embedding系は除外
+                        supports_vision = 'embed' not in model_name.lower()
                     
                     models.append({
                         "id": f"gemini/{model_name}",
@@ -95,8 +114,7 @@ def get_gemini_models() -> List[Dict[str, Any]]:
                         "supports_vision": supports_vision,
                         "supports_json": True,
                         "description": getattr(model, 'description', ''),
-                        "recommended": is_recommended,  # 推奨フラグ（チャット用途）
-                        "model_type": model_type,  # モデルタイプ
+                        "recommended": is_recommended,
                         "supported_methods": list(methods),  # デバッグ用
                         "cost_per_1k_tokens": {
                             "input": 0.0,
@@ -118,57 +136,10 @@ def get_gemini_models() -> List[Dict[str, Any]]:
                     raise
         
         if not models:
-            print("[WARNING] No Gemini models found, using fallback")
-            return _get_fallback_gemini_models()
+            print("[WARNING] No Gemini models found from API")
+            return []
         
         print(f"[INFO] ✅ Fetched {len(models)} Gemini models from API")
-        
-        # 教育用：APIから取得できた場合でも、他の種類のモデル（画像・埋め込みなど）も
-        # 「非推奨」として表示するためにリストに追加する
-        educational_examples = [
-            {
-                "id": "gemini/imagen-3.0-generate-001",
-                "name": "imagen-3.0-generate-001",
-                "provider": "Gemini API",
-                "litellm_provider": "gemini",
-                "supports_vision": False,
-                "supports_json": False,
-                "description": "Imagen 3 (Image Generation)",
-                "recommended": False,
-                "model_type": "画像生成",
-                "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-            },
-            {
-                "id": "gemini/text-embedding-004",
-                "name": "text-embedding-004",
-                "provider": "Gemini API",
-                "litellm_provider": "gemini",
-                "supports_vision": False,
-                "supports_json": True,
-                "description": "Text Embedding Model",
-                "recommended": False,
-                "model_type": "埋め込み",
-                "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-            },
-            {
-                "id": "gemini/aqa",
-                "name": "aqa",
-                "provider": "Gemini API",
-                "litellm_provider": "gemini",
-                "supports_vision": False,
-                "supports_json": True,
-                "description": "Attributed Question Answering",
-                "recommended": False,
-                "model_type": "Q&A",
-                "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-            }
-        ]
-        
-        # IDで重複チェックしつつマージ
-        existing_ids = {m["id"] for m in models}
-        for ex in educational_examples:
-            if ex["id"] not in existing_ids:
-                models.append(ex)
         
         # キャッシュ保存（1時間TTL）
         _MODEL_CACHE[cache_key] = models
@@ -179,92 +150,10 @@ def get_gemini_models() -> List[Dict[str, Any]]:
     except ImportError as e:
         print(f"[WARNING] google-genai package not installed: {e}")
         print("[INFO] Install with: pip install -U google-genai")
-        return _get_fallback_gemini_models()
+        return []
     except Exception as e:
         print(f"[ERROR] Failed to fetch Gemini models: {type(e).__name__}: {e}")
-        return _get_fallback_gemini_models()
-
-
-def _get_fallback_gemini_models() -> List[Dict[str, Any]]:
-    """
-    フォールバック: APIエラー時の最小限の推奨モデル + 教育用非推奨モデル
-    """
-    return [
-        # --- 推奨モデル (Chat) ---
-        {
-            "id": "gemini/gemini-flash-latest",
-            "name": "gemini-flash-latest",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": True,
-            "supports_json": True,
-            "description": "Latest Gemini Flash model",
-            "recommended": True,
-            "model_type": "チャット",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        },
-        {
-            "id": "gemini/gemini-pro-latest",
-            "name": "gemini-pro-latest",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": True,
-            "supports_json": True,
-            "description": "Latest Gemini Pro model",
-            "recommended": True,
-            "model_type": "チャット",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        },
-        {
-            "id": "gemini/gemini-2.5-flash",
-            "name": "gemini-2.5-flash",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": True,
-            "supports_json": True,
-            "description": "Gemini 2.5 Flash",
-            "recommended": True,
-            "model_type": "チャット",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        },
-        {
-            "id": "gemini/gemini-2.5-pro",
-            "name": "gemini-2.5-pro",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": True,
-            "supports_json": True,
-            "description": "Gemini 2.5 Pro",
-            "recommended": True,
-            "model_type": "チャット",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        },
-        # --- 非推奨モデル (Examples) ---
-        {
-            "id": "gemini/imagen-3.0-generate-001",
-            "name": "imagen-3.0-generate-001",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": False,
-            "supports_json": False,
-            "description": "Imagen 3 (Image Generation)",
-            "recommended": False,
-            "model_type": "画像生成",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        },
-        {
-            "id": "gemini/text-embedding-004",
-            "name": "text-embedding-004",
-            "provider": "Gemini API",
-            "litellm_provider": "gemini",
-            "supports_vision": False,
-            "supports_json": True,
-            "description": "Text Embedding Model",
-            "recommended": False,
-            "model_type": "埋め込み",
-            "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
-        }
-    ]
+        return []
 
 
 def get_openai_models() -> List[Dict[str, Any]]:
@@ -342,6 +231,26 @@ def get_openai_models() -> List[Dict[str, Any]]:
             
             recommended = (not has_not_recommended_pattern) or is_preview_exception
             
+            # supported_methods推測（OpenAI APIは機能リストを返さないため名前から推測）
+            supported_methods = []
+            model_id_lower = model.id.lower()
+            
+            # Chat/Completions対応
+            if any(model.id.startswith(p) for p in ['gpt-', 'o1-', 'o3-', 'o4-', 'chatgpt-']):
+                supported_methods.append('generateContent')
+            
+            # Audio対応（transcribe = speech-to-text, tts = text-to-speech）
+            if 'transcribe' in model_id_lower:
+                supported_methods.append('transcribe')
+            if 'tts' in model_id_lower:
+                supported_methods.append('textToSpeech')
+            if 'audio' in model_id_lower or 'realtime' in model_id_lower:
+                supported_methods.append('audio')
+            
+            # Vision/Multimodal対応
+            if supports_vision:
+                supported_methods.append('vision')
+            
             models_list.append({
                 "id": f"openai/{model.id}",
                 "name": model.id,
@@ -350,7 +259,7 @@ def get_openai_models() -> List[Dict[str, Any]]:
                 "supports_vision": supports_vision,
                 "supports_json": True,
                 "recommended": recommended,
-                "model_type": "チャット",
+                "supported_methods": supported_methods,
                 "description": f"OpenAI {model.id}",
                 "cost_per_1k_tokens": {"input": 0.0, "output": 0.0}
             })

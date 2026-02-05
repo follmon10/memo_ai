@@ -2544,6 +2544,24 @@ function renderModelList() {
     const modelList = document.getElementById('modelList');
     modelList.innerHTML = '';
     
+    // モデルリストがまだ取得されていない場合はローディング表示
+    if (App.model.available.length === 0 && !App.model.allModels?.length) {
+        modelList.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: #666;">
+                <div class="spinner" style="margin: 0 auto 16px;"></div>
+                <p>モデル一覧を取得中...</p>
+            </div>
+        `;
+        // 再取得を試みる
+        loadAvailableModels().then(() => {
+            // 取得完了後に再描画（モーダルが開いている場合のみ）
+            if (!document.getElementById('modelModal').classList.contains('hidden')) {
+                renderModelList();
+            }
+        });
+        return;
+    }
+    
     // デフォルトモデルの解決
     const textModelInfo = App.model.available.find(m => m.id === App.model.defaultText);
     const visionModelInfo = App.model.available.find(m => m.id === App.model.defaultMultimodal);
@@ -2678,9 +2696,17 @@ function createModelItem(model) {
         }
     }
         
+    // supported_methods表示（デバッグ用・小さく表示）
+    let methodsText = '';
+    if (model.supported_methods && model.supported_methods.length > 0) {
+        const methodsShort = model.supported_methods.join(', ');
+        methodsText = `<div class="model-methods" style="font-size: 0.7em; color: #888; margin-top: 2px;">Methods: ${methodsShort}</div>`;
+    }
+    
     item.innerHTML = `
         <div class="model-info">
             <div class="model-name">${displayName}${pricingText}</div>
+            ${methodsText}
             ${notRecommendedBadge}
             ${rateLimitBadge}
         </div>

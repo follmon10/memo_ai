@@ -137,11 +137,27 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             continue
         
         # OpenAIモデルは動的取得できた場合のみスキップ
-        if openai_loaded_dynamically and (model_id.startswith("openai/") or model_id.startswith("gpt") or "openai" in model_id.lower()):
-            continue
+        # gpt-*, o1-*, o3-*, o4-*, chatgpt-* を全てスキップ
+        if openai_loaded_dynamically:
+            openai_prefixes = ["openai/", "gpt", "o1-", "o3-", "o4-", "chatgpt-"]
+            if any(model_id.startswith(prefix) or model_id.lower().startswith(prefix) for prefix in openai_prefixes):
+                continue
+            if "openai" in model_id.lower():
+                continue
         
         # Geminiの古いバージョン（1.5/2.0）は常に除外
         if "gemini-1.5" in model_id or "gemini-2.0" in model_id:
+            continue
+        
+        # チャット以外のモデルを除外（moderation、embedding等）
+        non_chat_patterns = [
+            "moderation",   # text-moderation-*, omni-moderation-*
+            "embedding",    # text-embedding-*
+            "whisper",      # 音声認識
+            "tts",          # 音声合成
+            "dall-e",       # 画像生成
+        ]
+        if any(pattern in model_id.lower() for pattern in non_chat_patterns):
             continue
         
         # モデル名を正規化（プレフィックスを除去）して重複チェック
@@ -258,7 +274,18 @@ def get_available_models(recommended_only: bool = True) -> List[Dict[str, Any]]:
         if litellm_provider and is_provider_available(litellm_provider):
             # 推奨モデルフィルター
             if recommended_only:
-                if model["id"] in RECOMMENDED_MODELS:
+                # 1. モデルIDがRECOMMENDED_MODELSに完全一致
+                # 2. モデル名（プレフィックスなし）がRECOMMENDED_MODELSに一致
+                # 3. APIが recommended=True を返している
+                model_id = model["id"]
+                model_name = model.get("name", "")
+                is_in_recommended_list = (
+                    model_id in RECOMMENDED_MODELS or 
+                    model_name in RECOMMENDED_MODELS
+                )
+                api_recommends = model.get("recommended", False)
+                
+                if is_in_recommended_list or api_recommends:
                     available.append(model)
             else:
                 available.append(model)
