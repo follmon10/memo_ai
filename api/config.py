@@ -44,16 +44,21 @@ DEFAULT_TEXT_MODEL = os.getenv("DEFAULT_TEXT_MODEL", "gemini/gemini-2.5-flash")
 # 画像を含むマルチモーダル入力の場合のデフォルト（Vision対応モデル必須）
 DEFAULT_MULTIMODAL_MODEL = os.getenv("DEFAULT_MULTIMODAL_MODEL", "gemini/gemini-2.5-flash")
 
+# --- デバッグモード設定 (Debug Mode) ---
+# デバッグエンドポイントとAIモデル選択機能を有効にします。
+# 本番環境では必ず False に設定してください。
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
 # --- デフォルトシステムプロンプト (Default System Prompt) ---
 # AIの基本的な役割定義。ターゲットごとに上書き可能です。
 # 環境変数でオーバーライド可能です。
 DEFAULT_SYSTEM_PROMPT = os.getenv(
     "DEFAULT_SYSTEM_PROMPT",
-    """優秀な秘書として、ユーザーのタスクを明確にする手伝いをすること。
-明確な実行できる タスク名に言い換えて。先頭に的確な絵文字を追加して
+    """優秀な秘書として、ノートの内容を参考に、ユーザーのタスクを明確にする手伝いをすること。
+
 画像の場合は、そこから何をしようとしているのか推定して、タスクにして。
 会話的な返答はしない。
-返答は機械的に、タスク名としてふさわしい文字列のみを出力すること。"""
+返答は機械的に、先頭に的確な絵文字を追加して、タスク名としてふさわしい文字列のみを出力すること。"""
 )
 
 # --- 環境変数の検証 (Environment Variable Validation) ---

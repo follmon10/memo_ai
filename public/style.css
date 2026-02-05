@@ -539,6 +539,93 @@ select[multiple].prop-input:hover {
     background: #f5f5f5;
 }
 
+/* Emoji Button - LINE Style */
+.btn-emoji {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #f0f0f0;
+    color: #333;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.1s;
+    line-height: 1;
+    padding: 0;
+}
+
+.btn-emoji:hover {
+    background: #e5e5e5;
+}
+
+.btn-emoji:active {
+    transform: scale(0.95);
+}
+
+/* Emoji Palette */
+.emoji-palette {
+    position: absolute;
+    bottom: 70px;
+    right: 15px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 12px;
+    z-index: 100;
+    border: 1px solid #e0e0e0;
+    max-width: 320px;
+}
+
+.emoji-palette-header {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+    padding: 0 4px;
+}
+
+.emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+}
+
+.emoji-btn {
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.1s;
+    padding: 0;
+}
+
+.emoji-btn:hover {
+    background: #f0f0f0;
+    transform: scale(1.2);
+}
+
+.emoji-btn:active {
+    transform: scale(0.95);
+}
+
+/* スタンプ表示（吹き出しなしの大きな絵文字） */
+.chat-stamp {
+    font-size: 64px;
+    line-height: 1.2;
+    padding: 8px;
+    background: transparent;
+    align-self: flex-end;
+}
+
 /* チャットコントロール */
 .chat-controls {
     display: flex;

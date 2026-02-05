@@ -150,6 +150,26 @@ pip install -r requirements.txt
 lsof -ti:8000 | xargs kill -9  # Mac/Linux
 ```
 
+**別のポートを使用:**
+```bash
+# ポート番号を変更する場合は、PORT環境変数も設定してください
+# (起動メッセージで正しいポート番号が表示されます)
+
+# Mac/Linux (python3の場合)
+PORT=8000 python3 -m uvicorn api.index:app --reload --host 0.0.0.0 --port 8000
+
+# Mac/Linux (pythonの場合)
+PORT=8000 python -m uvicorn api.index:app --reload --host 0.0.0.0 --port 8000
+
+# Windows (コマンドプロンプト)
+set PORT=8000 && python3 -m uvicorn api.index:app --reload --host 0.0.0.0 --port 8000
+
+# Windows (PowerShell)
+$env:PORT=8000; python3 -m uvicorn api.index:app --reload --host 0.0.0.0 --port 8000
+
+# http://localhost:8000 でアクセス
+```
+
 ---
 
 ## ✅ アクセス方法
@@ -188,10 +208,10 @@ python -m venv venv
 **解決策1:** 別のポートを使う
 ```bash
 # Mac/Linux
-python3 run_server.py --port 8001
+python3 run_server.py --port 8000
 
 # Windows
-python run_server.py --port 8001
+python run_server.py --port 8000
 ```
 
 **解決策2:** 使用中のプロセスを終了する (Mac/Linux)

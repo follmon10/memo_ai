@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- キャッシュ制御メタタグはJavaScriptで動的に追加されます (DEBUG_MODE時のみ) -->
     <title>Notion AI Memo - Chat</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -141,13 +142,65 @@
                 <div class="input-row">
                     <button id="addMediaBtn" class="btn-add-media" title="画像を追加">＋</button>
                     <textarea id="memoInput" placeholder="メッセージを入力..." rows="1"></textarea>
-
+                    <button id="emojiBtn" class="btn-emoji" title="絵文字を追加">😀</button>
                 </div>
 
                 <!-- メディアメニュー -->
                 <div id="mediaMenu" class="media-menu hidden">
                     <button id="cameraBtn">📷 カメラ</button>
                     <button id="galleryBtn">🖼️ 画像を選択</button>
+                </div>
+
+                <!-- 絵文字パレット -->
+                <div id="emojiPalette" class="emoji-palette hidden">
+                    <div class="emoji-palette-header">よく使う絵文字</div>
+                    <div class="emoji-grid">
+                        <!-- 笑顔・感情 -->
+                        <button type="button" class="emoji-btn" data-emoji="😀">😀</button>
+                        <button type="button" class="emoji-btn" data-emoji="😊">😊</button>
+                        <button type="button" class="emoji-btn" data-emoji="😄">😄</button>
+                        <button type="button" class="emoji-btn" data-emoji="🥰">🥰</button>
+                        <button type="button" class="emoji-btn" data-emoji="😍">😍</button>
+                        <button type="button" class="emoji-btn" data-emoji="🤗">🤗</button>
+                        <button type="button" class="emoji-btn" data-emoji="😂">😂</button>
+                        <button type="button" class="emoji-btn" data-emoji="🤣">🤣</button>
+                        <!-- 思考・困惑 -->
+                        <button type="button" class="emoji-btn" data-emoji="🤔">🤔</button>
+                        <button type="button" class="emoji-btn" data-emoji="😅">😅</button>
+                        <button type="button" class="emoji-btn" data-emoji="😢">😢</button>
+                        <button type="button" class="emoji-btn" data-emoji="😭">😭</button>
+                        <button type="button" class="emoji-btn" data-emoji="😱">😱</button>
+                        <button type="button" class="emoji-btn" data-emoji="😡">😡</button>
+                        <button type="button" class="emoji-btn" data-emoji="🙄">🙄</button>
+                        <button type="button" class="emoji-btn" data-emoji="😴">😴</button>
+                        <!-- ジェスチャー -->
+                        <button type="button" class="emoji-btn" data-emoji="👍">👍</button>
+                        <button type="button" class="emoji-btn" data-emoji="👎">👎</button>
+                        <button type="button" class="emoji-btn" data-emoji="👏">👏</button>
+                        <button type="button" class="emoji-btn" data-emoji="🙏">🙏</button>
+                        <button type="button" class="emoji-btn" data-emoji="💪">💪</button>
+                        <button type="button" class="emoji-btn" data-emoji="✌️">✌️</button>
+                        <button type="button" class="emoji-btn" data-emoji="🤝">🤝</button>
+                        <button type="button" class="emoji-btn" data-emoji="👋">👋</button>
+                        <!-- シンボル -->
+                        <button type="button" class="emoji-btn" data-emoji="❤️">❤️</button>
+                        <button type="button" class="emoji-btn" data-emoji="💯">💯</button>
+                        <button type="button" class="emoji-btn" data-emoji="✨">✨</button>
+                        <button type="button" class="emoji-btn" data-emoji="🔥">🔥</button>
+                        <button type="button" class="emoji-btn" data-emoji="⭐">⭐</button>
+                        <button type="button" class="emoji-btn" data-emoji="💡">💡</button>
+                        <button type="button" class="emoji-btn" data-emoji="✅">✅</button>
+                        <button type="button" class="emoji-btn" data-emoji="❌">❌</button>
+                        <!-- その他 -->
+                        <button type="button" class="emoji-btn" data-emoji="🎉">🎉</button>
+                        <button type="button" class="emoji-btn" data-emoji="🎊">🎊</button>
+                        <button type="button" class="emoji-btn" data-emoji="🎁">🎁</button>
+                        <button type="button" class="emoji-btn" data-emoji="☕">☕</button>
+                        <button type="button" class="emoji-btn" data-emoji="🍕">🍕</button>
+                        <button type="button" class="emoji-btn" data-emoji="🚀">🚀</button>
+                        <button type="button" class="emoji-btn" data-emoji="💬">💬</button>
+                        <button type="button" class="emoji-btn" data-emoji="📝">📝</button>
+                    </div>
                 </div>
 
                 <!-- Hidden Inputs -->

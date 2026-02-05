@@ -28,7 +28,7 @@ from api.ai import analyze_text_with_ai, chat_analyze_text_with_ai
 # 使用可能なAIモデル定義
 from api.models import get_available_models, get_text_models, get_vision_models
 # アプリケーションのデフォルト設定
-from api.config import DEFAULT_TEXT_MODEL, DEFAULT_MULTIMODAL_MODEL, DEFAULT_SYSTEM_PROMPT
+from api.config import DEFAULT_TEXT_MODEL, DEFAULT_MULTIMODAL_MODEL, DEFAULT_SYSTEM_PROMPT, DEBUG_MODE
 # レート制限
 from api.rate_limiter import rate_limiter
 
@@ -289,7 +289,7 @@ async def debug_info():
     この情報はトラブルシューティングに役立ちますが、本番環境では公開すべきではありません。
     """
     # DEBUG_MODEチェック - 無効の場合は404を返す
-    if not os.environ.get("DEBUG_MODE", "false").lower() == "true":
+    if not DEBUG_MODE:
         raise HTTPException(status_code=404, detail="Not Found")
     
     import sys
@@ -395,7 +395,7 @@ async def get_config():
     NotionのConfigデータベースから、アプリの設定（プロンプト一覧など）を取得します。
     """
     # DEBUG_MODE状態を取得
-    debug_mode = os.environ.get("DEBUG_MODE", "false").lower() == "true"
+    debug_mode = DEBUG_MODE
     
     config_db_id = APP_CONFIG["config_db_id"] or os.environ.get("NOTION_CONFIG_DB_ID")
     
