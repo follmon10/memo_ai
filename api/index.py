@@ -408,6 +408,15 @@ async def debug_info():
     elif os.environ.get("ALLOWED_ORIGINS"):
         cors_info["detected_platform"] = "Manual (ALLOWED_ORIGINS)"
     
+    # モデル情報（デバッグ用）
+    recommended_models = get_available_models(recommended_only=True)
+    all_models = get_available_models(recommended_only=False)
+    models_info = {
+        "recommended_count": len(recommended_models),
+        "total_count": len(all_models),
+        "raw_list": all_models  # 全モデルの生データ
+    }
+    
     return {
         "timestamp": timestamp,
         "environment": environment,
@@ -415,7 +424,8 @@ async def debug_info():
         "filesystem_checks": filesystem_checks,
         "env_vars": env_vars,
         "cors": cors_info,
-        "routes": routes[:20]  # 最初の20個のみ
+        "routes": routes[:20],  # 最初の20個のみ
+        "models": models_info
     }
 
 # ⚠️⚠️⚠️ ここまで削除（本番環境では） ⚠️⚠️⚠️
@@ -450,15 +460,19 @@ async def get_config():
     }
 
 @app.get("/api/models")
-async def get_models():
+async def get_models(all: bool = False):
     """
     利用可能なAIモデル一覧の取得
     
     テキスト専用モデルとマルチモーダル（画像対応）モデルに分類して返します。
     フロントエンドでユーザーがモデルを選択する際に使用されます。
+    
+    Args:
+        all: True の場合、全モデルを返す。False（デフォルト）の場合、推奨モデルのみ。
     """
     try:
-        all_models = get_available_models()
+        # recommended_only = not all
+        all_models = get_available_models(recommended_only=not all)
         text_only = get_text_models()
         vision_capable = get_vision_models()
         
@@ -482,8 +496,8 @@ async def get_targets(request: Request):
     ルートページ直下にあるページやデータベース、およびリンクされているページを取得します。
     これらはユーザーがメモの保存先やチャットのコンテキストとして選択する候補となります。
     """
-    # レート制限チェック（緩め）
-    await rate_limiter.check_rate_limit(request, endpoint="targets", custom_limit=30)
+    # レート制限チェック
+    await rate_limiter.check_rate_limit(request, endpoint="targets")
     root_id = os.environ.get("NOTION_ROOT_PAGE_ID")
     if not root_id:
         raise HTTPException(status_code=500, detail="❌ NOTION_ROOT_PAGE_ID が設定されていません。.envファイルに NOTION_ROOT_PAGE_ID=your_page_id を追加してください。")
@@ -564,8 +578,8 @@ async def get_schema(target_id: str, request: Request):
     ページの場合は単純な構造を返し、データベースの場合は各プロパティ（列）の定義を返します。
     エラーハンドリングを強化しており、DBとしてもページとしても取得できなかった場合に詳細なエラーを返します。
     """
-    # レート制限チェック（緩め）
-    await rate_limiter.check_rate_limit(request, endpoint="schema", custom_limit=30)
+    # レート制限チェック
+    await rate_limiter.check_rate_limit(request, endpoint="schema")
     db_error = None
     page_error = None
     
@@ -630,11 +644,7 @@ async def analyze(request: Request, analyze_req: AnalyzeRequest):
     ユーザーのテキスト入力からデータベースに登録するための適切なプロパティ値をAIに推定させます。
     """
     # レート制限チェック
-    rate_limit_headers = await rate_limiter.check_rate_limit(
-        request,
-        endpoint="analyze",
-        custom_limit=10
-    )
+    await rate_limiter.check_rate_limit(request, endpoint="analyze")
     
     target_db_id = analyze_req.target_db_id
     
@@ -732,11 +742,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
     画像入力や履歴を踏まえた回答が可能です。
     """
     # レート制限チェック
-    rate_limit_headers = await rate_limiter.check_rate_limit(
-        request, 
-        endpoint="chat", 
-        custom_limit=10
-    )
+    await rate_limiter.check_rate_limit(request, endpoint="chat")
     
     print(f"[Chat] Request received for target: {chat_req.target_id}")
     print(f"[Chat] Has image: {bool(chat_req.image_data)}")

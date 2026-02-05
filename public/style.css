@@ -1603,4 +1603,21 @@ select[multiple].prop-input:hover {
     color: #333;
 }
 
+/* モデル選択リストのプロバイダーグループヘッダー */
+.model-group-header {
+    font-weight: 600;
+    font-size: 0.85em;
+    color: #666;
+    padding: 10px 12px 6px;
+    background: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.model-group-header:first-of-type {
+    border-top: none;
+}
+
 /* ⚠️ ここまで削除（本番環境では） */

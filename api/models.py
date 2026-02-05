@@ -15,6 +15,34 @@ from api.config import (
 # モデルレジストリのキャッシュ (初回構築後に再利用)
 _MODEL_CACHE = None
 
+# 推奨モデルリスト（ホワイトリスト）
+# フロントエンドUIに表示する厳選モデル
+# 同一モデルの複数バージョン（日付付きバリアント等）を除外し、
+# ユーザーが選びやすい主要モデルのみをリストアップ
+# 実際に利用可能なモデルのみを含める（404エラー回避）
+RECOMMENDED_MODELS = [
+    # Gemini API - 推奨（実際に利用可能な安定版）
+    # Note: -latest サフィックスを使用すると最新の安定版にアクセス可能
+    "gemini/gemini-2.5-flash",      # 最新の高速モデル
+    "gemini/gemini-2.5-pro",        # 最新の高性能モデル
+    "gemini/gemini-2.0-flash-exp",  # 2.0 Flash実験版
+    "gemini/gemini-1.5-flash-latest",  # 1.5 Flash安定版（latestサフィックス）
+    "gemini/gemini-1.5-pro-latest",    # 1.5 Pro安定版（latestサフィックス）
+    
+    # OpenAI - 推奨（実際に利用可能）
+    "gpt-4o",           # 最新のGPT-4 Omni
+    "gpt-4o-mini",      # 軽量版GPT-4o
+    "gpt-4-turbo",      # GPT-4 Turbo
+    "o1-mini",          # o1シリーズ軽量版
+    "o3-mini",          # o3シリーズ軽量版
+    
+    # Anthropic - 推奨（実際に利用可能）
+    "claude-3-5-sonnet-20241022",  # Claude 3.5 Sonnet（日付指定版）
+    "claude-3-5-haiku-20241022",   # Claude 3.5 Haiku（日付指定版）
+    "claude-3-opus-20240229",      # Claude 3 Opus（日付指定版）
+]
+
+
 def _build_model_registry() -> List[Dict[str, Any]]:
     """
     LiteLLMの `model_cost` 辞書からモデルレジストリを構築します。
@@ -39,7 +67,13 @@ def _build_model_registry() -> List[Dict[str, Any]]:
     }
     
     # LiteLLMのレジストリに含まれる全モデルを走査
+    seen_models = {}  # モデルID重複チェック用
+    
     for model_id, model_info in model_cost_map.items():
+        # 重複チェック: 既に同じIDのモデルが登録されていればスキップ
+        if model_id in seen_models:
+            continue
+            
         # メタデータからプロバイダーIDを取得
         litellm_provider = model_info.get("litellm_provider")
         
@@ -105,6 +139,7 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             entry["rate_limit_note"] = model_info["rate_limit_note"]
         
         registry.append(entry)
+        seen_models[model_id] = True  # 重複チェック用に記録
     
     # UI表示順序の調整: プロバイダー名 > モデル名でソート
     registry.sort(key=lambda x: (x["provider"], x["name"]))
@@ -124,10 +159,15 @@ def get_model_registry() -> List[Dict[str, Any]]:
 
 
 
-def get_available_models() -> List[Dict[str, Any]]:
+def get_available_models(recommended_only: bool = True) -> List[Dict[str, Any]]:
     """
     設定されているAPIキー/認証情報に基づいて、現在利用可能なモデルのリストを返します。
     `api.config.is_provider_available` を使用して、各モデルのプロバイダーが有効かチェックします。
+    
+    Args:
+        recommended_only: 
+            True  -> 推奨モデルのみ（RECOMMENDED_MODELSホワイトリスト）
+            False -> 全モデル（デバッグ用）
     """
     available = []
     registry = get_model_registry()
@@ -138,9 +178,15 @@ def get_available_models() -> List[Dict[str, Any]]:
         litellm_provider = model.get("litellm_provider")
         
         if litellm_provider and is_provider_available(litellm_provider):
-            available.append(model)
+            # 推奨モデルフィルター
+            if recommended_only:
+                if model["id"] in RECOMMENDED_MODELS:
+                    available.append(model)
+            else:
+                available.append(model)
     
     return available
+
 
 def get_models_by_capability(supports_vision: bool = None) -> List[Dict[str, Any]]:
     """

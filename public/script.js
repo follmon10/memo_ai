@@ -379,6 +379,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeDebugBtn) closeDebugBtn.addEventListener('click', closeDebugModal);
     if (refreshDebugBtn) refreshDebugBtn.addEventListener('click', loadDebugInfo);
     
+    // スーパーリロード
+    const superReloadItem = document.getElementById('superReloadMenuItem');
+    if (superReloadItem) {
+        superReloadItem.addEventListener('click', () => {
+            settingsMenu.classList.add('hidden');
+            handleSuperReload();
+        });
+    }
+    
     // DEBUG_MODE状態を取得してUI制御
     initializeDebugMode();
 });
@@ -478,6 +487,17 @@ function renderDebugInfo(data) {
             html += `<div class="debug-item"><span class="debug-label">${key}:</span><code class="debug-value">${value || 'null'}</code></div>`;
         }
         html += '</div></div>';
+    }
+    
+    // モデル情報
+    if (data.models) {
+        html += '<div class="debug-section">';
+        html += `<h3>📋 モデル一覧 (${data.models.recommended_count} 推奨 / ${data.models.total_count} 全モデル)</h3>`;
+        html += '<details style="margin-top: 8px;">';
+        html += '<summary style="cursor: pointer; padding: 8px; background: var(--bg-secondary); border-radius: 4px;">全モデル生データを表示...</summary>';
+        html += `<pre class="debug-code" style="max-height: 400px; overflow: auto; margin-top: 8px;">${JSON.stringify(data.models.raw_list, null, 2).replace(/</g, '&lt;')}</pre>`;
+        html += '</details>';
+        html += '</div>';
     }
     
     content.innerHTML = html;
@@ -2433,17 +2453,30 @@ function toggleSettingsMenu() {
 
 async function loadAvailableModels() {
     try {
+        // 推奨モデルを取得
         const res = await fetch('/api/models');
         if (!res.ok) throw new Error('Failed to load models');
         
         const data = await res.json();
         
         // モデルの分類とデフォルト設定
-        App.model.available = data.all || [];
+        App.model.available = data.all || [];  // 推奨モデル（デフォルト表示）
         App.model.textOnly = data.text_only || [];
         App.model.vision = data.vision_capable || [];
         App.model.defaultText = data.defaults?.text;
         App.model.defaultMultimodal = data.defaults?.multimodal;
+        
+        // 全モデルも取得（バックグラウンドで）
+        App.model.allModels = [];  // 全モデル（トグル時に使用）
+        App.model.showAllModels = false;  // デフォルトは推奨のみ表示
+        
+        fetch('/api/models?all=true')
+            .then(r => r.json())
+            .then(allData => {
+                App.model.allModels = allData.all || [];
+                console.log("All models loaded:", App.model.allModels.length);
+            })
+            .catch(err => console.warn('Failed to load all models:', err));
         
         // デフォルトモデルの警告チェック
         if (data.warnings && data.warnings.length > 0) {
@@ -2457,7 +2490,7 @@ async function loadAvailableModels() {
         // ユーザーの前回の選択を復元（なければ自動選択）
         App.model.current = localStorage.getItem('memo_ai_selected_model') || null;
         
-        // 保存されていたモデルが現在も有効か確認
+        // 保存されていたモデルが現在も有効か確認（推奨か全モデルのいずれかにあればOK）
         if (App.model.current) {
             const isValid = App.model.available.some(m => m.id === App.model.current);
             if (!isValid) {
@@ -2503,6 +2536,29 @@ function renderModelList() {
     // デフォルトモデル利用不可の警告
     const textWarning = !textModelInfo ? ' ⚠️' : '';
     const visionWarning = !visionModelInfo ? ' ⚠️' : '';
+    
+    // 表示モードトグル（推奨のみ / 全モデル）
+    const toggleContainer = document.createElement('div');
+    toggleContainer.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f0f0f0; border-radius: 8px; margin-bottom: 8px;';
+    
+    const toggleLabel = document.createElement('span');
+    toggleLabel.style.cssText = 'font-size: 0.85em; color: #666;';
+    toggleLabel.textContent = App.model.showAllModels 
+        ? `全モデル表示中 (${App.model.allModels?.length || 0}件)` 
+        : `推奨モデル表示中 (${App.model.available.length}件)`;
+    
+    const toggleBtn = document.createElement('button');
+    toggleBtn.style.cssText = 'padding: 4px 12px; font-size: 0.8em; border: 1px solid #ccc; border-radius: 16px; background: white; cursor: pointer;';
+    toggleBtn.textContent = App.model.showAllModels ? '推奨のみに戻す' : '全モデルを表示';
+    toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        App.model.showAllModels = !App.model.showAllModels;
+        renderModelList();
+    };
+    
+    toggleContainer.appendChild(toggleLabel);
+    toggleContainer.appendChild(toggleBtn);
+    modelList.appendChild(toggleContainer);
 
     // 自動選択オプション (推奨)
     const autoItem = document.createElement('div');
@@ -2526,10 +2582,32 @@ function renderModelList() {
     separator.style.borderBottom = '1px solid var(--border-color)';
     separator.style.margin = '8px 0';
     modelList.appendChild(separator);
+    
+    // 表示するモデルリストを選択
+    const modelsToShow = App.model.showAllModels 
+        ? (App.model.allModels || []) 
+        : App.model.available;
 
-    // モデル一覧（逆順で表示）
-    App.model.available.slice().reverse().forEach(model => {
-        modelList.appendChild(createModelItem(model));
+    // プロバイダー別にグループ化
+    const grouped = {};
+    modelsToShow.forEach(model => {
+        const provider = model.provider || 'Other';
+        if (!grouped[provider]) grouped[provider] = [];
+        grouped[provider].push(model);
+    });
+    
+    // プロバイダーごとにセクション作成（ソート順に表示）
+    Object.keys(grouped).sort().forEach(provider => {
+        // ヘッダー追加
+        const header = document.createElement('div');
+        header.className = 'model-group-header';
+        header.textContent = provider;
+        modelList.appendChild(header);
+        
+        // モデル追加（名前順にソート）
+        grouped[provider].sort((a, b) => a.name.localeCompare(b.name)).forEach(model => {
+            modelList.appendChild(createModelItem(model));
+        });
     });
 }
 
@@ -2651,3 +2729,41 @@ function updateState(icon, text, details = null) {
         }, 5000);
     }
 }
+
+// --- スーパーリロード (Super Reload) ---
+// LocalStorageを全てクリアしてページをリロードします。
+
+/**
+ * スーパーリロード: LocalStorageを全てクリアしてページをリロード
+ */
+function handleSuperReload() {
+    const confirmed = confirm(
+        '⚠️ スーパーリロードを実行します\n\n' +
+        '以下のデータが全て削除されます:\n' +
+        '- チャット履歴\n' +
+        '- 下書き\n' +
+        '- システムプロンプト設定\n' +
+        '- モデル選択\n' +
+        '- その他すべてのローカル設定\n\n' +
+        '本当に実行しますか?'
+    );
+    
+    if (confirmed) {
+        console.log('[Super Reload] Clearing localStorage and reloading...');
+        
+        // LocalStorageを全てクリア
+        try {
+            localStorage.clear();
+            showToast('すべてのデータをクリアしました。リロード中...');
+            
+            // 少し待ってからリロード（トーストが見えるように）
+            setTimeout(() => {
+                location.reload(true); // 強制リロード
+            }, 500);
+        } catch (err) {
+            console.error('[Super Reload] Error:', err);
+            showToast('❌ クリアに失敗しました');
+        }
+    }
+}
+
