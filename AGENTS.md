@@ -8,6 +8,7 @@
 
 **Memo AI** は **Notion をメモリとして使用するステートレス AI 秘書**です。
 ユーザーの入力（テキスト、画像）を AI で解析し、構造化された Notion エントリに変換します。
+ユーザーが学習できるように、状況、課題、対処法などをわかり易く説明すること。
 
 ### 設計原則
 
@@ -352,8 +353,8 @@ pytest -v --tb=short
 - 主要機能が動作するか（Chat、Save、Settingsなど）
 
 #### 4. ドキュメント更新
-- `README.md`: 環境変数、起動方法に変更があれば更新
-- `AGENTS.md`: 新しい問題パターンや予防策を追加
+- `README.md`: 変更があれば更新
+- `AGENTS.md`: 新しい問題パターンや予防策を追加。700行を超えたら、重要度の低い項目を要点のみ端的に要約して減らす。
 - `task.md`: 完了項目をチェック
 - 完了レポート（walkthrough）: 変更内容を記録
 
@@ -377,7 +378,133 @@ git diff
 
 ---
 
-## 9. デバッグパターン
+## 9. UI実装ガイドライン
+
+### 9.1 モーダルダイアログ実装チェックリスト
+
+新しいモーダルを追加する際は、必ず以下を確認してください:
+
+#### ❌ 禁止事項
+
+- `alert()`, `confirm()`, `prompt()`などのブラウザネイティブダイアログを使用しない
+- 独自のCSSクラスを作らず、既存のモーダル用クラスを使用する
+
+#### ✅ 標準HTMLパターン
+
+```html
+<div id="xxxModal" class="modal hidden">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>タイトル</h2>
+            <button id="closeXxxModalBtn" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="modal-info">
+                <label for="xxxInput"><strong>ラベル:</strong></label>
+                <input type="text" id="xxxInput" class="target-select" 
+                       style="width: 100%; margin-top: 8px;">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="cancelXxxBtn" class="btn-secondary">キャンセル</button>
+            <button id="saveXxxBtn" class="btn-primary">保存</button>
+        </div>
+    </div>
+</div>
+```
+
+#### ✅ 標準JavaScriptパターン
+
+```javascript
+function openXxxModal() {
+    const modal = document.getElementById('xxxModal');
+    const input = document.getElementById('xxxInput');
+    const saveBtn = document.getElementById('saveXxxBtn');
+    const cancelBtn = document.getElementById('cancelXxxBtn');
+    const closeBtn = document.getElementById('closeXxxModalBtn');
+    
+    if (!modal || !input || !saveBtn || !cancelBtn || !closeBtn) return;
+    
+    input.value = '';
+    modal.classList.remove('hidden');
+    input.focus();
+    
+    const handleSave = () => {
+        const value = input.value.trim();
+        if (value) {
+            modal.classList.add('hidden');
+            // 保存処理
+        } else {
+            showToast('入力してください');
+        }
+    };
+    
+    const handleCancel = () => {
+        modal.classList.add('hidden');
+    };
+    
+    const onKeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleSave(); }
+        else if (e.key === 'Escape') { handleCancel(); }
+    };
+    
+    // {once: true}で自動クリーンアップ
+    saveBtn.addEventListener('click', handleSave, {once: true});
+    cancelBtn.addEventListener('click', handleCancel, {once: true});
+    closeBtn.addEventListener('click', handleCancel, {once: true});
+    input.addEventListener('keydown', onKeydown);
+    
+    const removeKeyListener = () => { input.removeEventListener('keydown', onKeydown); };
+    saveBtn.addEventListener('click', removeKeyListener, {once: true});
+    cancelBtn.addEventListener('click', removeKeyListener, {once: true});
+    closeBtn.addEventListener('click', removeKeyListener, {once: true});
+}
+```
+
+**参考実装**: `newPageModal` (main.js: 777-836), `promptModal` (prompt.js)
+
+### 9.2 CSS クラス使用ガイドライン
+
+#### モーダル専用クラス
+
+| クラス名 | 用途 |
+|:---|:---|
+| `.modal` | モーダル全体のコンテナ |
+| `.modal-content` | モーダルの中身 |
+| `.modal-header` | ヘッダー部分 |
+| `.modal-body` | ボディ部分 |
+| `.modal-footer` | フッター部分 |
+| `.modal-info` | 情報表示エリア（グレー背景） |
+| `.close-btn` | ×閉じるボタン |
+| `.btn-primary` | メインアクションボタン |
+| `.btn-secondary` | キャンセルボタン |
+| `.target-select` | 入力フィールド |
+
+#### ❌ モーダルで使用禁止
+
+`.prop-field`, `.prop-label`, `.prop-input` → これらは**プロパティフォーム専用**
+
+### 9.3 イベントリスナー管理ベストプラクティス
+
+#### パターン1: `{once: true}` オプション（推奨）
+
+```javascript
+button.addEventListener('click', handler, {once: true});
+// ✅ 1回実行後に自動削除される
+```
+
+#### パターン2: `cloneNode()` による置換
+
+```javascript
+const newElement = element.cloneNode(true);
+element.parentNode.replaceChild(newElement, element);
+newElement.addEventListener('click', handler);
+// ✅ 古いリスナーが確実に削除される
+```
+
+---
+
+## 10. デバッグパターン
 
 | 問題 | 調査場所 |
 | :--- | :--- |
@@ -406,7 +533,7 @@ git diff
 
 ---
 
-## 12. Windows開発環境の注意事項
+## 12. 開発環境の注意事項
 
 > **📝 開発者への指示**: よくある問題とその対処法を発見した場合は、このセクションに追記してください。
 

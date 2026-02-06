@@ -540,11 +540,9 @@ async def save_endpoint(save_req: SaveRequest):
             # --- Title Auto-generation Logic ---
             # Check if title property exists in sanitized_props
             has_title = False
-            title_key = None
             for key, val in sanitized_props.items():
                 if "title" in val:
                     has_title = True
-                    title_key = key
                     break
 
             # If no title provided, try to generate one from content

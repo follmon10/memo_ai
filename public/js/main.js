@@ -773,18 +773,66 @@ window.openContentModal = openContentModal;
 
 // --- New Page Creation ---
 
+
 function openNewPageModal() {
-    // 新規作成モーダル（未実装ならプレースホルダー）
-    /** @type {HTMLSelectElement | null} */
-    const appSelector = /** @type {any} */(document.getElementById('appSelector'));
+    // Show the custom new page modal
+    const modal = document.getElementById('newPageModal');
+    const input = /** @type {HTMLInputElement} */(document.getElementById('newPageNameInput'));
+    const createBtn = document.getElementById('createNewPageBtn');
+    const cancelBtn = document.getElementById('cancelNewPageBtn');
+    const closeBtn = document.getElementById('closeNewPageModalBtn');
     
-    const title = prompt("新しいページのタイトルを入力してください:");
-    if (title) {
-        createNewPage(title);
-    } else {
-        // キャンセル時は選択を戻す
+    if (!modal || !input || !createBtn || !cancelBtn || !closeBtn) return;
+    
+    // Clear previous input
+    input.value = '';
+    
+    // Show modal
+    modal.classList.remove('hidden');
+    input.focus();
+    
+    // Handle create button
+    const handleCreate = () => {
+        const title = input.value.trim();
+        if (title) {
+            modal.classList.add('hidden');
+            createNewPage(title);
+        } else {
+            showToast('ページ名を入力してください');
+        }
+    };
+    
+    // Handle cancel
+    const handleCancel = () => {
+        modal.classList.add('hidden');
+        // Reset app selector to previous value
+        const appSelector = /** @type {HTMLSelectElement} */(document.getElementById('appSelector'));
         if (appSelector) appSelector.value = App.target.id || '';
-    }
+    };
+    
+    // Handle keyboard events
+    const onKeydown = (/** @type {KeyboardEvent} */ e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleCreate();
+        } else if (e.key === 'Escape') {
+            handleCancel();
+        }
+    };
+    
+    // Add event listeners with {once: true} to auto-cleanup
+    createBtn.addEventListener('click', handleCreate, {once: true});
+    cancelBtn.addEventListener('click', handleCancel, {once: true});
+    closeBtn.addEventListener('click', handleCancel, {once: true});
+    input.addEventListener('keydown', onKeydown);
+    
+    // Remove keydown listener when modal closes
+    const removeKeyListener = () => {
+        input.removeEventListener('keydown', onKeydown);
+    };
+    createBtn.addEventListener('click', removeKeyListener, {once: true});
+    cancelBtn.addEventListener('click', removeKeyListener, {once: true});
+    closeBtn.addEventListener('click', removeKeyListener, {once: true});
 }
 window.openNewPageModal = openNewPageModal;
 
