@@ -4,7 +4,7 @@
 
 ---
 
-## 1. プロジェクト概要
+## プロジェクト概要
 
 **Memo AI** は **Notion をメモリとして使用するステートレス AI 秘書**です。
 ユーザーの入力（テキスト、画像）を AI で解析し、構造化された Notion エントリに変換します。
@@ -31,12 +31,12 @@
 
 ---
 
-## 2. 技術スタック
+## 技術スタック
 
 ### バックエンド (`api/`)
 | 項目 | 技術 |
 | :--- | :--- |
-| 言語 | Python 3.8+ |
+| 言語 | Python 3.9+ |
 | フレームワーク | FastAPI |
 | サーバー | Uvicorn |
 | AI クライアント | LiteLLM (Gemini, OpenAI, Anthropic 対応) |
@@ -52,40 +52,53 @@
 
 ---
 
-## 3. ディレクトリ構成
+## ディレクトリ構成
 
 ```
 memo_ai/
 ├── api/                    # バックエンド (FastAPI)
-│   ├── index.py            # メインルート: /api/chat, /api/save, /api/targets
+│   ├── __init__.py         # パッケージ初期化
+│   ├── index.py            # メインアプリケーション、CORS、lifespan
+│   ├── endpoints.py        # API ルート定義（System, Notion, AI, Update系）
 │   ├── ai.py               # プロンプト設計、AI モデル連携
 │   ├── notion.py           # Notion API 統合
 │   ├── config.py           # .env からの設定読み込み
 │   ├── models.py           # Pydantic リクエスト/レスポンスモデル
+│   ├── schemas.py          # データスキーマ定義
+│   ├── services.py         # ビジネスロジック層
 │   ├── model_discovery.py  # AI モデル動的検出
 │   ├── llm_client.py       # LiteLLM ラッパー
-│   └── rate_limiter.py     # レート制限 (1000 req/hr)
+│   ├── rate_limiter.py     # レート制限 (1000 req/hr)
+│   └── logger.py           # 構造化ロギング設定
 │
 ├── public/                 # フロントエンド (Vanilla JS)
 │   ├── index.html          # メイン HTML
 │   ├── style.css           # 全スタイル
+│   ├── favicon.svg         # ファビコン
 │   └── js/
 │       ├── main.js         # エントリポイント、初期化、Notion ターゲット選択
 │       ├── chat.js         # チャット UI: 吹き出し描画、履歴管理
 │       ├── images.js       # 画像キャプチャ・処理
 │       ├── prompt.js       # システムプロンプト管理
 │       ├── model.js        # AI モデル選択 UI
-│       └── debug.js        # デバッグモーダル (DEBUG_MODE 時のみ)
+│       ├── debug.js        # デバッグモーダル (DEBUG_MODE 時のみ)
+│       └── types.d.ts      # TypeScript型定義（jsconfig.json経由）
+│
+├── tests/                  # テストスイート (pytest)
+│   ├── conftest.py         # 共通フィクスチャ、マーカー登録
+│   ├── test_*.py           # 各種テストファイル (61テスト)
+│   └── __init__.py         # パッケージ初期化
 │
 ├── .env                    # ローカル秘密情報 (コミット禁止)
 ├── .env.example            # .env のテンプレート
 ├── requirements.txt        # Python 依存関係
+├── pyproject.toml          # プロジェクト設定、pytest設定
 └── vercel.json             # Vercel デプロイ設定
 ```
 
 ---
 
-## 4. UIアーキテクチャとデータフロー
+## UIアーキテクチャとデータフロー
 
 ### Notionプロパティの扱い
 
@@ -161,7 +174,7 @@ if (window.App.target.schema) {
 
 ---
 
-## 5. 環境変数
+## 環境変数
 
 `.env` の主要変数 (詳細は `.env.example` 参照):
 
@@ -169,15 +182,18 @@ if (window.App.target.schema) {
 | :--- | :--- | :--- |
 | `NOTION_API_KEY` | ✅ | Notion Integration トークン |
 | `NOTION_ROOT_PAGE_ID` | ✅ | データ保存先のルートページ ID |
-| `GEMINI_API_KEY` | ✅ | Google Gemini API キー |
+| `GEMINI_API_KEY` | ✅ | Google Gemini API キー (デフォルト) |
+| `OPENAI_API_KEY` | ❌ | OpenAI API キー (オプション) |
+| `ANTHROPIC_API_KEY` | ❌ | Anthropic API キー (オプション) |
 | `DEBUG_MODE` | ❌ | `True` でデバッグ機能有効化 |
 | `DEFAULT_TEXT_MODEL` | ❌ | テキスト専用リクエストのデフォルトモデル |
 | `DEFAULT_MULTIMODAL_MODEL` | ❌ | 画像+テキストのデフォルトモデル |
 | `RATE_LIMIT_ENABLED` | ❌ | `True` でレート制限有効化 |
+| `RATE_LIMIT_GLOBAL_PER_HOUR` | ❌ | 1時間あたりの総リクエスト数制限 |
 
 ---
 
-## 5. エージェント行動規範
+## エージェント行動規範
 
 ### ✅ 必ず行うこと
 - `.env` で設定管理。APIキーのハードコード禁止
@@ -199,7 +215,7 @@ if (window.App.target.schema) {
 
 ---
 
-## 6. 起動コマンド
+## 起動コマンド
 
 ### 仮想環境の有効化
 ```bash
@@ -230,7 +246,7 @@ pip install -r requirements.txt
 
 ---
 
-## 7. テスト
+## テスト
 
 ### テスト実行
 ```bash
@@ -260,6 +276,10 @@ pytest -m integration # 統合テスト
 | `tests/test_advanced_scenarios.py` | セキュリティ・並行性 |
 | `tests/test_critical_paths.py` | 統合フロー |
 | `tests/test_regression_schemas.py` | スキーマ整合性 |
+| `tests/test_rate_limiter.py` | レート制限機能 |
+| `tests/test_llm_client.py` | LLM API連携・リトライ |
+| `tests/test_ai_internal.py` | プロンプト構築・JSON修復 |
+| `tests/test_model_discovery.py` | モデル検出・キャッシュ |
 
 ### エンドポイント移行時のテスト修正
 `api/index.py` から `api/endpoints.py` へ関数を移行した場合、テスト内のモックパス修正が必要:
@@ -298,7 +318,7 @@ with patch("api.endpoints.fetch_children_list", ...):
 
 ---
 
-## 8. 🚨 頻発する問題と予防策 (重要)
+## 🚨 頻発する問題と予防策 (重要)
 うまく行かない場合、ベストプラクティスを調査する。
 以下の問題が繰り返し発生しています。**必ず予防策を実施してください。**
 
@@ -389,9 +409,9 @@ git diff
 
 ---
 
-## 9. UI実装ガイドライン
+## UI実装ガイドライン
 
-### 9.1 モーダルダイアログ実装チェックリスト
+### モーダルダイアログ実装チェックリスト
 
 新しいモーダルを追加する際は、必ず以下を確認してください:
 
@@ -474,7 +494,7 @@ function openXxxModal() {
 
 **参考実装**: `newPageModal` (main.js: 777-836), `promptModal` (prompt.js)
 
-### 9.2 CSS クラス使用ガイドライン
+### CSS クラス使用ガイドライン
 
 #### モーダル専用クラス
 
@@ -495,7 +515,7 @@ function openXxxModal() {
 
 `.prop-field`, `.prop-label`, `.prop-input` → これらは**プロパティフォーム専用**
 
-### 9.3 イベントリスナー管理ベストプラクティス
+### イベントリスナー管理ベストプラクティス
 
 #### パターン1: `{once: true}` オプション（推奨）
 
@@ -515,7 +535,7 @@ newElement.addEventListener('click', handler);
 
 ---
 
-## 10. デバッグパターン
+## デバッグパターン
 
 | 問題 | 調査場所 |
 | :--- | :--- |
@@ -526,7 +546,7 @@ newElement.addEventListener('click', handler);
 
 ---
 
-## 10. セキュリティ注意事項
+## セキュリティ注意事項
 
 > ⚠️ **これはデモ/教育目的のアプリケーションです。**
 
@@ -537,14 +557,14 @@ newElement.addEventListener('click', handler);
 
 ---
 
-## 11. 参考資料
+## 参考資料
 
 - **README.md**: セットアップガイド、トラブルシューティング、カスタマイズ案
 - **Knowledge Items (KIs)**: `.gemini/antigravity/knowledge/` 内の `memo_ai_project_guide` に詳細なアーキテクチャドキュメントあり
 
 ---
 
-## 12. 開発環境の注意事項
+## 開発環境の注意事項
 
 > **📝 開発者への指示**: よくある問題とその対処法を発見した場合は、このセクションに追記してください。
 

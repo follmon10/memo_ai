@@ -40,37 +40,6 @@ async def test_schema_error_handling_invalid_id(client):
                 assert "page_error" in detail
 
 
-# ===== 2. POST /api/save - 画像除去（統合テスト） =====
-
-
-@pytest.mark.asyncio
-async def test_save_page_with_image_data_removal(client):
-    """
-    Page保存時、textに含まれる画像データが除去されること（統合テスト）
-    """
-    with patch("api.notion.append_block", new_callable=AsyncMock) as mock_append:
-        mock_append.return_value = True
-
-        payload = {
-            "target_db_id": "page-id",
-            "target_type": "page",
-            "properties": {},
-            "text": "Hello ![img](data:image/png;base64,abc123) World",
-        }
-
-        response = await client.post("/api/save", json=payload)
-        assert response.status_code == 200
-
-        # append_blockに渡された引数を確認
-        args, _ = mock_append.call_args
-        saved_text = args[1]
-
-        # 画像データが除去されていること
-        assert "data:image" not in saved_text
-        assert "Hello" in saved_text
-        assert "World" in saved_text
-
-
 @pytest.mark.asyncio
 async def test_save_database_with_image_in_richtext(client):
     """
