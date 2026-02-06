@@ -537,7 +537,52 @@ async def save_endpoint(save_req: SaveRequest):
                                 new_title.append(item)
                         val["title"] = new_title
 
-            url = await create_page(save_req.target_db_id, sanitized_props)
+            # --- Title Auto-generation Logic ---
+            # Check if title property exists in sanitized_props
+            has_title = False
+            title_key = None
+            for key, val in sanitized_props.items():
+                if "title" in val:
+                    has_title = True
+                    title_key = key
+                    break
+
+            # If no title provided, try to generate one from content
+            if not has_title:
+                content_text = save_req.text or "Untitled"
+                # Generate a safe title (truncated to 100 chars, first line)
+                safe_title = (
+                    content_text.split("\n")[0][:100] if content_text else "Untitled"
+                )
+                # Use a generic key "Name" or "Title" if we can't determine the schema's title key
+                # Ideally, the frontend should send the correct key, but this is a fallback
+                sanitized_props["Name"] = {"title": [{"text": {"content": safe_title}}]}
+                print(f"[Save] Auto-generated title: {safe_title}")
+
+            # --- Content Block Creation ---
+            children = []
+            if save_req.text:
+                # Simple paragraph block for the content
+                # Split extremely large content if necessary, though blocks have a 2000 char limit
+                # Here we keep it simple assuming reasonable length or future splitting logic
+                content_chunks = [
+                    save_req.text[i : i + 2000]
+                    for i in range(0, len(save_req.text), 2000)
+                ]
+                for chunk in content_chunks:
+                    children.append(
+                        {
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [
+                                    {"type": "text", "text": {"content": chunk}}
+                                ]
+                            },
+                        }
+                    )
+
+            url = await create_page(save_req.target_db_id, sanitized_props, children)
             return {"status": "success", "url": url}
     except Exception as e:
         print(f"[Save Error] {e}")

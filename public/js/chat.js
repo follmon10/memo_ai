@@ -59,7 +59,7 @@ export function renderChatHistory() {
                 if (window.getSelection().toString().length > 0) return;
                 
                 // Don't toggle if clicking a link/button inside (except this bubble's container)
-                if (e.target.tagName === 'A') return;
+                if (/** @type {HTMLElement} */(e.target).tagName === 'A') return;
 
                 // Close other open bubbles
                 const wasShown = bubble.classList.contains('show-actions');
@@ -193,7 +193,7 @@ export async function sendStamp(emoji) {
     
     // 入力欄をクリア（念のため）
     const memoInput = document.getElementById('memoInput');
-    if (memoInput) memoInput.value = '';
+    if (memoInput) /** @type {HTMLInputElement} */(memoInput).value = '';
     
     // AIタイピングインジケーター表示
     showAITypingIndicator();
@@ -202,7 +202,7 @@ export async function sendStamp(emoji) {
         // リファレンスページの取得
         let referenceContext = null;
         const referenceToggle = document.getElementById('referencePageToggle');
-        if (referenceToggle?.checked && window.App.target.id) {
+        if (/** @type {HTMLInputElement} */(referenceToggle)?.checked && window.App.target.id) {
             referenceContext = await fetchAndTruncatePageContent(window.App.target.id, window.App.target.type);
         }
         
@@ -318,34 +318,41 @@ export async function handleAddFromBubble(entry) {
             const inputs = document.querySelectorAll('#propertiesForm .prop-input');
             
             // Collect properties from form inputs
-            inputs.forEach(input => {
-                const key = input.dataset.key;
-                const type = input.dataset.type;
+            inputs.forEach(/** @param {HTMLElement} input */ input => {
+                const key = input.dataset?.key;
+                const type = input.dataset?.type;
                 
                 if (type === 'rich_text') {
                     // Use form value if exists, otherwise bubble content
-                    properties[key] = { rich_text: [{ text: { content: input.value || content } }] };
+                    const val = /** @type {HTMLInputElement} */(input).value || content;
+                    properties[key] = { rich_text: [{ text: { content: val } }] };
                 } else if (type === 'select' || type === 'status') {
                     // status uses the same structure as select
-                    if (input.value) {
+                    const selectVal = /** @type {HTMLSelectElement} */(input).value;
+                    if (selectVal) {
                         const propType = type === 'status' ? 'status' : 'select';
-                        properties[key] = { [propType]: { name: input.value } };
+                        properties[key] = { [propType]: { name: selectVal } };
                     }
                 } else if (type === 'multi_select') {
                     // UIでは単一選択として扱うが、Notionには配列として送る
-                    if (input.value) {
-                        properties[key] = { multi_select: [{ name: input.value }] };
+                    const selectVal = /** @type {HTMLSelectElement} */(input).value;
+                    if (selectVal) {
+                        properties[key] = { multi_select: [{ name: selectVal }] };
                     }
                 } else if (type === 'date') {
-                    if (input.value) properties[key] = { date: { start: input.value } };
+                    const dateVal = /** @type {HTMLInputElement} */(input).value;
+                    if (dateVal) properties[key] = { date: { start: dateVal } };
                 } else if (type === 'checkbox') {
-                    properties[key] = { checkbox: input.checked };
+                    properties[key] = { checkbox: /** @type {HTMLInputElement} */(input).checked };
                 } else if (type === 'url') {
-                    if (input.value) properties[key] = { url: input.value };
+                    const urlVal = /** @type {HTMLInputElement} */(input).value;
+                    if (urlVal) properties[key] = { url: urlVal };
                 } else if (type === 'email') {
-                    if (input.value) properties[key] = { email: input.value };
+                    const emailVal = /** @type {HTMLInputElement} */(input).value;
+                    if (emailVal) properties[key] = { email: emailVal };
                 } else if (type === 'number') {
-                    if (input.value) properties[key] = { number: Number(input.value) };
+                    const numVal = /** @type {HTMLInputElement} */(input).value;
+                    if (numVal) properties[key] = { number: Number(numVal) };
                 }
             });
             
@@ -428,10 +435,11 @@ export async function handleChatAI(inputText = null) {
     const updateState = window.updateState;
     const fetchAndTruncatePageContent = window.fetchAndTruncatePageContent;
     const clearPreviewImage = window.clearPreviewImage;
-    const updateSessionCost = window.updateSessionCost || ((cost) => { if (cost) window.App.model.sessionCost += cost; });
+    const updateSessionCost = /** @type {any} */(window).updateSessionCost || ((cost) => { if (cost) window.App.model.sessionCost += cost; });
     
     const memoInput = document.getElementById('memoInput');
-    const text = inputText !== null ? inputText : memoInput.value.trim();
+    const text = inputText !== null ? inputText : /** @type {HTMLInputElement} */(memoInput).value.trim();
+
     
     // 入力チェック: テキストまたは画像が必須
     if (!text && !window.App.image.base64) {
@@ -472,9 +480,10 @@ export async function handleChatAI(inputText = null) {
     }
     
     // 入力欄とプレビューのクリア
-    memoInput.value = '';
+    /** @type {HTMLInputElement} */(memoInput).value = '';
     memoInput.dispatchEvent(new Event('input'));
     clearPreviewImage();
+
     
     // 4. 使用するAIモデルの決定
     const hasImage = !!imageToSend;
@@ -503,9 +512,10 @@ export async function handleChatAI(inputText = null) {
         // 「ページを参照」機能
         const referenceToggle = document.getElementById('referencePageToggle');
         let referenceContext = '';
-        if (referenceToggle && referenceToggle.checked && window.App.target.id) {
+        if (referenceToggle && /** @type {HTMLInputElement} */(referenceToggle).checked && window.App.target.id) {
             referenceContext = await fetchAndTruncatePageContent(window.App.target.id, window.App.target.type);
         }
+
 
         // ペイロードの構築
         const payload = {

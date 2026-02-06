@@ -566,8 +566,26 @@ function renderDynamicForm(container, schema) {
             input.className = 'prop-input';
             input.dataset.key = key;
             input.dataset.type = prop.type;
+        } else if (prop.type === 'people' || prop.type === 'relation' || prop.type === 'files') {
+            // 現在未対応のプロパティタイプ
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'prop-input';
+            input.disabled = true;
+            input.placeholder = '(このアプリからは編集できません)';
+            input.dataset.key = key;
+            input.dataset.type = prop.type;
+        } else if (prop.type === 'formula' || prop.type === 'rollup') {
+            // 自動計算/参照プロパティ
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'prop-input';
+            input.disabled = true;
+            input.placeholder = '(自動計算/参照)';
+            input.dataset.key = key;
+            input.dataset.type = prop.type;
         } else {
-            // その他のテキスト系プロパティ (text, title, rich_text, number, url 等)
+            // その他のテキスト系プロパティ (text, title, rich_text, number, url, email, phone_number 等)
             input = document.createElement('input');
             input.type = 'text';
             input.className = 'prop-input';

@@ -231,19 +231,25 @@ async def fetch_recent_pages(target_db_id: str, limit: int = 3) -> List[Dict[str
     return results
 
 
-async def create_page(target_db_id: str, properties: Dict[str, Any]) -> str:
+async def create_page(
+    target_db_id: str, properties: Dict[str, Any], children: List[Dict[str, Any]] = None
+) -> str:
     """
     指定されたデータベースに新しいページを作成
 
     Args:
         target_db_id (str): 親データベースのID
         properties (Dict): 登録するプロパティ値
+        children (List[Dict], optional): ページ本文に追加するブロックのリスト
     Returns:
         str: 新しく作成されたページのNotion URL
     """
     body = {"parent": {"database_id": target_db_id}, "properties": properties}
+    if children:
+        body["children"] = children
 
     response = await safe_api_call("POST", "pages", json=body)
+
     if response and "url" in response:
         return response["url"]
 
