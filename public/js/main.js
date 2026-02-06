@@ -525,15 +525,15 @@ function renderDynamicForm(container, schema) {
         
         let input;
         
-        if (prop.type === 'select' || prop.type === 'multi_select') {
+        if (prop.type === 'select' || prop.type === 'multi_select' || prop.type === 'status') {
             input = document.createElement('select');
             input.className = 'prop-input';
             input.dataset.key = key;
             input.dataset.type = prop.type;
             
-            if (prop.type === 'multi_select') {
-                input.multiple = true;
-            }
+            // Note: multi_selectでもinput.multiple = trueを設定しない
+            // Notionでは複数選択可能だが、UIでは単一選択として扱う
+            // （優先度、工数レベルなどと同じ動作）
             
             // 空のオプション (デフォルト)
             const def = document.createElement('option');
@@ -542,7 +542,12 @@ function renderDynamicForm(container, schema) {
             input.appendChild(def);
             
             // Notionスキーマに定義されている固定オプションを追加
-            (prop[prop.type].options || []).forEach(o => {
+            // status タイプは prop.status.options、select/multi_select は prop[prop.type].options
+            const options = prop.type === 'status' 
+                ? (prop.status?.options || [])
+                : (prop[prop.type]?.options || []);
+            
+            options.forEach(o => {
                 const opt = document.createElement('option');
                 opt.value = o.name;
                 opt.textContent = o.name;
@@ -596,11 +601,16 @@ async function saveToDatabase() {
         const key = input.dataset?.key;
         const type = input.dataset?.type;
         
-        if (type === 'select') {
-            if (/** @type {HTMLSelectElement} */(input).value) properties[key] = { select: { name: /** @type {HTMLSelectElement} */(input).value } };
+        if (type === 'select' || type === 'status') {
+            if (/** @type {HTMLSelectElement} */(input).value) {
+                const propType = type === 'status' ? 'status' : 'select';
+                properties[key] = { [propType]: { name: /** @type {HTMLSelectElement} */(input).value } };
+            }
         } else if (type === 'multi_select') {
-            const selected = Array.from(/** @type {HTMLSelectElement} */(input).selectedOptions).map(o => ({ name: o.value }));
-            if (selected.length) properties[key] = { multi_select: selected };
+            // UIでは単一選択として扱うが、Notionには配列として送る
+            if (/** @type {HTMLSelectElement} */(input).value) {
+                properties[key] = { multi_select: [{ name: /** @type {HTMLSelectElement} */(input).value }] };
+            }
         } else if (type === 'checkbox') {
             properties[key] = { checkbox: /** @type {HTMLInputElement} */(input).checked };
         } else if (type === 'date') {

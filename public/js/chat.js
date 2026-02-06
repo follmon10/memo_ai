@@ -325,15 +325,27 @@ export async function handleAddFromBubble(entry) {
                 if (type === 'rich_text') {
                     // Use form value if exists, otherwise bubble content
                     properties[key] = { rich_text: [{ text: { content: input.value || content } }] };
-                } else if (type === 'select') {
-                    if (input.value) properties[key] = { select: { name: input.value } };
+                } else if (type === 'select' || type === 'status') {
+                    // status uses the same structure as select
+                    if (input.value) {
+                        const propType = type === 'status' ? 'status' : 'select';
+                        properties[key] = { [propType]: { name: input.value } };
+                    }
                 } else if (type === 'multi_select') {
-                    const selected = Array.from(input.selectedOptions).map(o => ({ name: o.value }));
-                    if (selected.length) properties[key] = { multi_select: selected };
+                    // UIでは単一選択として扱うが、Notionには配列として送る
+                    if (input.value) {
+                        properties[key] = { multi_select: [{ name: input.value }] };
+                    }
                 } else if (type === 'date') {
                     if (input.value) properties[key] = { date: { start: input.value } };
                 } else if (type === 'checkbox') {
                     properties[key] = { checkbox: input.checked };
+                } else if (type === 'url') {
+                    if (input.value) properties[key] = { url: input.value };
+                } else if (type === 'email') {
+                    if (input.value) properties[key] = { email: input.value };
+                } else if (type === 'number') {
+                    if (input.value) properties[key] = { number: Number(input.value) };
                 }
             });
             
