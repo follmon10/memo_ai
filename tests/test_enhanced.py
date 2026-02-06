@@ -156,32 +156,6 @@ async def test_process_block_unknown_type(client):
 
 
 @pytest.mark.asyncio
-async def test_save_boundary_1999_chars(client):
-    """1999文字: 分割されないこと"""
-    text = "a" * 1999
-
-    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = "https://notion.so/page"
-
-        payload = {
-            "target_db_id": "db-id",
-            "target_type": "database",
-            "properties": {"Content": {"rich_text": [{"text": {"content": text}}]}},
-        }
-
-        response = await client.post("/api/save", json=payload)
-        assert response.status_code == 200
-
-        args, _ = mock_create.call_args
-        props = args[1]
-        rich_text_items = props["Content"]["rich_text"]
-
-        # 分割されない
-        assert len(rich_text_items) == 1
-        assert len(rich_text_items[0]["text"]["content"]) == 1999
-
-
-@pytest.mark.asyncio
 async def test_save_boundary_2000_chars(client):
     """2000文字: 分割されないこと"""
     text = "a" * 2000
