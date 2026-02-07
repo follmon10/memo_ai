@@ -7,7 +7,7 @@
         }
     ],
     "functions": {
-        "api/**/*.py": {
+        "api/*.py": {
             "maxDuration": 60,
             "excludeFiles": "{tests/**,venv/**,__pycache__/**,.pytest_cache/**,.ruff_cache/**,**/*.test.py,**/test_*.py}"
         }
