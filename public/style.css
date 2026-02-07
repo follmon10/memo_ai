@@ -202,6 +202,43 @@ body {
     opacity: 0.8;
 }
 
+/* プロパティカード（AIバブル内に表示） */
+.props-card {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 8px;
+    border-left: 3px solid var(--line-green);
+    font-size: 13px;
+}
+
+.props-card-row {
+    display: flex;
+    flex-direction: column;
+    padding: 3px 0;
+}
+
+.props-card-row+.props-card-row {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    margin-top: 3px;
+    padding-top: 6px;
+}
+
+.props-card-key {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--line-text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.props-card-val {
+    color: var(--line-text);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* AI応答待ちインジケーター */
 .ai-typing-indicator {
     display: flex;

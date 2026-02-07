@@ -1,6 +1,31 @@
 // ========== CHAT MODULE ==========
 // チャット履歴管理とAI通信機能
 
+/**
+ * Notion API形式のプロパティ値から表示用テキストを汎用的に抽出する
+ * @param {any} val - Notion API形式のプロパティ値
+ * @returns {string} 表示用テキスト
+ */
+function extractDisplayValue(val) {
+    if (val == null) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    
+    // Notion API形式の各タイプに対応
+    if (val.title) return val.title.map(t => t?.text?.content || t?.plain_text || '').join('');
+    if (val.rich_text) return val.rich_text.map(t => t?.text?.content || t?.plain_text || '').join('');
+    if (val.select) return val.select?.name || '';
+    if (val.multi_select) return val.multi_select.map(o => o?.name || '').join(', ');
+    if (val.date) return val.date?.start || '';
+    if (val.checkbox !== undefined) return val.checkbox ? '✅' : '☐';
+    if (val.number !== undefined) return String(val.number);
+    if (val.url) return val.url;
+    if (val.email) return val.email;
+    if (val.status) return val.status?.name || '';
+    
+    return JSON.stringify(val);
+}
+
 // チャットメッセージを追加
 export function addChatMessage(type, message, properties = null, modelInfo = null) {
     const entry = {
@@ -49,6 +74,31 @@ export function renderChatHistory() {
         bubble.innerHTML = processedMessage;
         
         console.log(`[renderChatHistory] Bubble innerHTML ${index}:`, bubble.innerHTML.substring(0, 100));
+        
+        // AIメッセージにプロパティカードを表示
+        if (entry.type === 'ai' && entry.properties && Object.keys(entry.properties).length > 0) {
+            const propsCard = document.createElement('div');
+            propsCard.className = 'props-card';
+            
+            for (const [key, val] of Object.entries(entry.properties)) {
+                const row = document.createElement('div');
+                row.className = 'props-card-row';
+                
+                const label = document.createElement('span');
+                label.className = 'props-card-key';
+                label.textContent = key;
+                
+                const value = document.createElement('span');
+                value.className = 'props-card-val';
+                value.textContent = extractDisplayValue(val);
+                
+                row.appendChild(label);
+                row.appendChild(value);
+                propsCard.appendChild(row);
+            }
+            
+            bubble.appendChild(propsCard);
+        }
         
         // ユーザーまたはAIメッセージにホバーボタンを追加
         if (entry.type === 'user' || entry.type === 'ai') {
@@ -312,8 +362,8 @@ export async function handleAddFromBubble(entry) {
     try {
         // Determine save method based on target type
         if (window.App.target.type === 'database') {
-            // Database: collect properties from form and save
-            const properties = {};
+            // Database: AI抽出プロパティがあればベースとして使用
+            const properties = entry.properties ? { ...entry.properties } : {};
             const inputs = document.querySelectorAll('#propertiesForm .prop-input');
             
             // Collect properties from form inputs
@@ -469,8 +519,8 @@ export async function handleChatAI(inputText = null) {
     // 2. 会話履歴の準備
     const historyToSend = window.App.chat.session.slice(-10);
     
-    // 3. AIへのコンテキスト用にメッセージを追加
-    const contextMessage = text || '';
+    // 3. AIへのコンテキスト用にメッセージを追加（画像送信時もマーカーを残す）
+    const contextMessage = text || (imageToSend ? '[画像を送信しました]' : '');
     if (contextMessage) {
         window.App.chat.session.push({role: 'user', content: contextMessage});
     }
@@ -572,8 +622,22 @@ export async function handleChatAI(inputText = null) {
                 usage: data.usage,
                 cost: data.cost
             };
-            addChatMessage('ai', data.message, null, modelInfo);
-            window.App.chat.session.push({role: 'assistant', content: data.message});
+            addChatMessage('ai', data.message, data.properties || null, modelInfo);
+            // プロパティ情報をセッション履歴に含めて後続会話で参照可能にする
+            let sessionContent = data.message;
+            if (data.properties) {
+                const propSummary = Object.entries(data.properties)
+                    .map(([k, v]) => {
+                        if (v?.title) return `${k}: ${v.title[0]?.text?.content || ''}`;
+                        if (v?.rich_text) return `${k}: ${v.rich_text[0]?.text?.content || ''}`;
+                        if (v?.select) return `${k}: ${v.select.name}`;
+                        if (v?.multi_select) return `${k}: ${v.multi_select.map(o => o.name).join(', ')}`;
+                        return `${k}: ${JSON.stringify(v)}`;
+                    })
+                    .join(' / ');
+                sessionContent += `\n[抽出データ: ${propSummary}]`;
+            }
+            window.App.chat.session.push({role: 'assistant', content: sessionContent});
         } else {
             console.warn('[handleChatAI] data.message is falsy');
             const warningMsg = `⚠️ AIからの応答メッセージが空でした（model: ${data.model || 'unknown'}）`;

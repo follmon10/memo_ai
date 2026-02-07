@@ -81,6 +81,9 @@ function renderDebugInfo(data) {
             (b.timestamp || '').localeCompare(a.timestamp || '')
         );
 
+        // ログデータを保存（コピー機能用）
+        window.App.debug.lastAllLogs = allLogs;
+
         html += '<div class="debug-section">';
         html += '<h3>📡 API通信 <button class="btn-copy-debug" onclick="window.copyApiHistory()">📋 全履歴コピー</button></h3>';
         
@@ -141,7 +144,7 @@ function renderDebugInfo(data) {
                 html += `<span>${typeIcon} <strong>${typeLabel}</strong> ${statusBadge} <code>${label}</code>${titleInfo}`;
                 if (extra.length) html += ` ${extra.join(' ')}`;
                 html += ` <span style="color:#888; font-size:0.85em;">${time}</span></span>`;
-                html += `<button class="btn-copy-debug" style="margin-left:auto; font-size:0.75em; padding:2px 6px;" onclick="event.stopPropagation(); window.copyApiEntry(\`${entryJson.replace(/`/g, '\\`')}\`)">📋</button>`;
+                html += `<button class="btn-copy-debug" style="margin-left:auto; font-size:0.75em; padding:2px 6px;" data-entry-index="${i}" onclick="event.stopPropagation();">📋</button>`;
                 html += `</summary>`;
                 html += `<pre class="debug-code" style="margin:4px 0; font-size:0.8em; white-space:pre-wrap; word-break:break-all;">${entryJson}</pre>`;
                 html += `</details>`;
@@ -181,6 +184,15 @@ function renderDebugInfo(data) {
     }
     
     content.innerHTML = html;
+    
+    // イベント委譲: コピーボタンのクリックを処理
+    content.querySelectorAll('.btn-copy-debug[data-entry-index]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.getAttribute('data-entry-index'), 10);
+            copyApiEntry(index);
+        });
+    });
 }
 
 /**
@@ -261,7 +273,15 @@ export function copyApiHistory() {
 /**
  * 個別のAPI通信エントリをコピー
  */
-export function copyApiEntry(jsonString) {
+export function copyApiEntry(index) {
+    if (!window.App.debug.lastAllLogs || !window.App.debug.lastAllLogs[index]) {
+        if (window.showToast) window.showToast('コピーするデータがありません');
+        return;
+    }
+    
+    const entry = window.App.debug.lastAllLogs[index];
+    const jsonString = JSON.stringify(entry, null, 2);
+    
     navigator.clipboard.writeText(jsonString)
         .then(() => window.showToast && window.showToast('コピーしました'))
         .catch(() => window.showToast && window.showToast('コピー失敗'));

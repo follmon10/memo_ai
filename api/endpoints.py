@@ -252,6 +252,168 @@ async def get_schema(target_id: str, request: Request):
     )
 
 
+@router.get("/api/content/{page_id}")
+async def get_content(page_id: str, request: Request, type: str = "page"):
+    """
+    ページまたはデータベースのコンテンツ取得
+
+    AIの参照コンテキストとして使用するため、Notionページのブロック内容や
+    データベースのエントリをプレーンテキストに変換して返します。
+
+    Args:
+        page_id: NotionページまたはデータベースのID
+        type: "page" または "database"
+
+    Returns:
+        {
+            "content": "フォーマットされたテキストコンテンツ"
+        }
+    """
+    from api.notion import query_database
+
+    # レート制限チェック
+    await rate_limiter.check_rate_limit(request, endpoint="content")
+
+    try:
+        if type == "database":
+            # データベースの場合：最近のエントリを取得してフォーマット
+            print(f"[Content] Fetching database entries for: {page_id}")
+            entries = await query_database(page_id, limit=20)
+
+            if not entries:
+                return {"content": "データベースにエントリがありません。"}
+
+            # エントリをテキスト形式に変換
+            lines = [f"=== データベースコンテンツ (最新{len(entries)}件) ===\n"]
+
+            for idx, entry in enumerate(entries, 1):
+                props = entry.get("properties", {})
+                entry_parts = [f"## エントリ {idx}"]
+
+                # 各プロパティを抽出
+                for prop_name, prop_data in props.items():
+                    prop_type = prop_data.get("type")
+                    value = None
+
+                    if prop_type == "title":
+                        title_objs = prop_data.get("title", [])
+                        value = "".join([t.get("plain_text", "") for t in title_objs])
+                    elif prop_type == "rich_text":
+                        text_objs = prop_data.get("rich_text", [])
+                        value = "".join([t.get("plain_text", "") for t in text_objs])
+                    elif prop_type == "select":
+                        select_obj = prop_data.get("select")
+                        value = select_obj.get("name") if select_obj else None
+                    elif prop_type == "multi_select":
+                        options = prop_data.get("multi_select", [])
+                        value = ", ".join([o.get("name", "") for o in options])
+                    elif prop_type == "status":
+                        status_obj = prop_data.get("status")
+                        value = status_obj.get("name") if status_obj else None
+                    elif prop_type == "date":
+                        date_obj = prop_data.get("date")
+                        value = date_obj.get("start") if date_obj else None
+                    elif prop_type == "checkbox":
+                        value = "✓" if prop_data.get("checkbox") else "✗"
+                    elif prop_type == "number":
+                        value = prop_data.get("number")
+
+                    if value:
+                        entry_parts.append(f"- {prop_name}: {value}")
+
+                lines.append("\n".join(entry_parts))
+                lines.append("")  # 空行
+
+            content_text = "\n".join(lines)
+            print(f"[Content] Database content length: {len(content_text)} chars")
+            return {"content": content_text}
+
+        else:
+            # ページの場合：ブロック内容を取得してテキスト化
+            print(f"[Content] Fetching page blocks for: {page_id}")
+            blocks = await fetch_children_list(page_id, limit=100)
+
+            if not blocks:
+                return {"content": "ページにコンテンツがありません。"}
+
+            # ブロックをプレーンテキストに変換
+            lines = ["=== ページコンテンツ ===\n"]
+
+            for block in blocks:
+                block_type = block.get("type")
+
+                # テキストを含む主要なブロックタイプを処理
+                if block_type == "paragraph":
+                    paragraph = block.get("paragraph", {})
+                    text_objs = paragraph.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    if text.strip():
+                        lines.append(text)
+
+                elif block_type in ["heading_1", "heading_2", "heading_3"]:
+                    heading = block.get(block_type, {})
+                    text_objs = heading.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    if text.strip():
+                        # 見出しレベルに応じてマークダウン記号を追加
+                        prefix = "#" * int(block_type[-1])
+                        lines.append(f"\n{prefix} {text}")
+
+                elif block_type == "bulleted_list_item":
+                    item = block.get("bulleted_list_item", {})
+                    text_objs = item.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    if text.strip():
+                        lines.append(f"• {text}")
+
+                elif block_type == "numbered_list_item":
+                    item = block.get("numbered_list_item", {})
+                    text_objs = item.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    if text.strip():
+                        lines.append(f"1. {text}")
+
+                elif block_type == "to_do":
+                    todo = block.get("to_do", {})
+                    text_objs = todo.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    checked = todo.get("checked", False)
+                    checkbox = "[x]" if checked else "[ ]"
+                    if text.strip():
+                        lines.append(f"{checkbox} {text}")
+
+                elif block_type == "quote":
+                    quote = block.get("quote", {})
+                    text_objs = quote.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    if text.strip():
+                        lines.append(f"> {text}")
+
+                elif block_type == "code":
+                    code = block.get("code", {})
+                    text_objs = code.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in text_objs])
+                    language = code.get("language", "")
+                    if text.strip():
+                        lines.append(f"```{language}\n{text}\n```")
+
+            content_text = "\n".join(lines)
+            print(
+                f"[Content] Page content length: {len(content_text)} chars, blocks: {len(blocks)}"
+            )
+            return {"content": content_text}
+
+    except Exception as e:
+        print(f"[Content Error] {type(e).__name__}: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+        # エラー時は空のコンテンツを返して処理を続行
+        # （参照コンテキストがなくてもチャットは機能すべき）
+        return {"content": f"コンテンツの取得中にエラーが発生しました: {str(e)}"}
+
+
 # --- AI系エンドポイント (Step 3) ---
 
 

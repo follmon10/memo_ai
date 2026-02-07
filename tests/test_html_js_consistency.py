@@ -1,11 +1,21 @@
 """
 HTML-JavaScript Consistency Test
-HTMLとJavaScript間のセレクター整合性を自動検証する。
+
+【このテストの目的】
+このプロジェクトは個人用ツールのため、チーム開発のようなコードレビューがありません。
+最大のリスクは「HTML ↔ JavaScript の不整合」です。
+
+- HTMLでIDやclassを変更したとき
+- JavaScriptで新しいDOM要素を参照したとき
+- 動的に生成されるDOM要素のセレクターを変更したとき
+
+これらの変更時に**静的解析で自動検出**することで、実行時のnullエラーを未然に防ぎます。
 
 検出対象:
-  - getElementById('id') / querySelector('#id')
-  - querySelector('.class') / querySelectorAll('.class')
+  - getElementById('id') / querySelector('#id') - HTMLに対応するid属性がない
+  - querySelector('.class') / querySelectorAll('.class') - HTMLに対応するclass属性がない
   - JSテンプレート文字列内のid="..."定義も認識（動的DOM要素対応）
+  - CSS内で定義されたclassも認識（動的DOM生成対応）
 """
 
 import re
@@ -64,6 +74,15 @@ def _extract_js_selectors(js_dir: Path):
             dynamic_classes.update(m.group(1).split())
         for m in re.finditer(r"classList\.add\(['\"]([a-zA-Z0-9_-]+)", content):
             dynamic_classes.add(m.group(1))
+
+        # JS内テンプレート文字列で定義されたclass (id と同様の扱い)
+        for m in re.finditer(r'class=\\"([^\\"]+)\\"', content):
+            dynamic_classes.update(m.group(1).split())
+        for m in re.finditer(r'class="([^"]+)"', content):
+            dynamic_classes.update(m.group(1).split())
+        # シングルクォート内のダブルクォート class 属性も検出
+        for m in re.finditer(r"'[^']*class=\"([^\"]+)\"[^']*'", content):
+            dynamic_classes.update(m.group(1).split())
 
     return id_refs, class_refs, dynamic_ids, dynamic_classes
 

@@ -34,3 +34,4 @@ htmlcov/
 # Project specific backup files
 *.bak
 models_api_response.json
+node_modules/
