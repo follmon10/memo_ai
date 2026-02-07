@@ -53,7 +53,7 @@ export function compressImage(file, maxDimension = 600, quality = 0.7) {
             };
             
             img.onerror = () => reject(new Error('Failed to load image'));
-            img.src = e.target.result;
+            img.src = /** @type {string} */(e.target.result);
         };
         
         reader.onerror = () => reject(new Error('Failed to read file'));
@@ -103,8 +103,10 @@ export async function capturePhotoFromCamera() {
             
             document.body.appendChild(modal);
             
-            const video = document.getElementById('cameraPreview');
-            const canvas = document.getElementById('cameraCanvas');
+            /** @type {HTMLVideoElement} */
+            const video = /** @type {any} */(document.getElementById('cameraPreview'));
+            /** @type {HTMLCanvasElement} */
+            const canvas = /** @type {any} */(document.getElementById('cameraCanvas'));
             const captureBtn = document.getElementById('capturePhoto');
             const cancelBtn = document.getElementById('cancelCamera');
             const closeBtn = document.getElementById('closeCameraModal');
@@ -208,7 +210,7 @@ export function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-            const result = reader.result; // data:image/jpeg;base64,...
+            const result = /** @type {string} */(reader.result); // data:image/jpeg;base64,...
             // Extract core base64 and mime type
             const matches = result.match(/^data:(.+);base64,(.+)$/);
             if (matches && matches.length === 3) {
@@ -232,7 +234,8 @@ export function setPreviewImage(base64, mimeType) {
     window.App.image.mimeType = mimeType;
     
     const previewArea = document.getElementById('imagePreviewArea');
-    const previewImg = document.getElementById('previewImg');
+    /** @type {HTMLImageElement} */
+    const previewImg = /** @type {any} */(document.getElementById('previewImg'));
     
     previewImg.src = `data:${mimeType};base64,${base64}`;
     previewArea.classList.remove('hidden');
@@ -245,7 +248,8 @@ export function clearPreviewImage() {
     window.App.image.mimeType = null;
     
     const previewArea = document.getElementById('imagePreviewArea');
-    const previewImg = document.getElementById('previewImg');
+    /** @type {HTMLImageElement} */
+    const previewImg = /** @type {any} */(document.getElementById('previewImg'));
     
     previewImg.src = '';
     previewArea.classList.add('hidden');
@@ -266,8 +270,10 @@ export function setupImageHandlers() {
     const galleryBtn = document.getElementById('galleryBtn');
     
     // Hidden inputs
-    const imageInput = document.getElementById('imageInput'); // For Gallery
-    const cameraInput = document.getElementById('cameraInput'); // For Mobile Camera
+    /** @type {HTMLInputElement} */
+    const imageInput = /** @type {any} */(document.getElementById('imageInput')); // For Gallery
+    /** @type {HTMLInputElement} */
+    const cameraInput = /** @type {any} */(document.getElementById('cameraInput')); // For Mobile Camera
     
     // 1. Toggle Media Menu
     if (addMediaBtn && mediaMenu) {
@@ -278,7 +284,7 @@ export function setupImageHandlers() {
         
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
-            if (!addMediaBtn.contains(e.target) && !mediaMenu.contains(e.target)) {
+            if (!addMediaBtn.contains(/** @type {Node} */(e.target)) && !mediaMenu.contains(/** @type {Node} */(e.target))) {
                 mediaMenu.classList.add('hidden');
             }
         });
@@ -294,7 +300,7 @@ export function setupImageHandlers() {
         });
         
         imageInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
+            const file = /** @type {HTMLInputElement} */(e.target).files[0];
             if (!file) return;
             
             try {
@@ -335,7 +341,7 @@ export function setupImageHandlers() {
     // Handle mobile camera input changes
     if (cameraInput) {
         cameraInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
+            const file = /** @type {HTMLInputElement} */(e.target).files[0];
             if (!file) return;
             
             try {

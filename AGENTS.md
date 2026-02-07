@@ -11,6 +11,49 @@
 英語で思考し、ユーザーの言語で回答すること。
 ユーザーが開発について学習できるように、状況、課題、対処法などをわかり易く説明すること。
 
+### 必須チェックリスト（作業完了時）
+
+#### コード品質確認
+```bash
+# Python: テスト + lint
+pytest -v --tb=short
+
+# JavaScript: プロジェクト設定に従った型チェック
+# jsconfig.json の checkJs:true が有効 → IDEの問題パネルでエラー0件を確認
+# node --check は構文エラーのみ。型エラーは検出しない
+```
+- 意図した変更がすべて適用されているか
+- やり残しがないか、不要なものが残ってないか
+- 似た問題が他のファイルにないか確認する（下記「横断確認の原則」参照）
+
+#### テスト実行
+```bash
+# 全テストが通ることを確認
+pytest -v --tb=short
+```
+
+#### 実行確認
+- サーバーが正常に起動するか
+- 主要機能が動作するか（Chat、Save、Settingsなど）
+
+#### ドキュメント更新
+- `README.md`: 変更があれば更新
+- `AGENTS.md`: 繰り返す問題パターンや予防策を追加。
+個別具体的ではなく、汎用的な問題を防止する対策として記述すること。
+AGENTS.mdが500行を超えたら、重要度の低い項目を要点のみ端的に要約して減らす。
+
+#### Git確認
+```bash
+# 意図しないファイルが含まれていないか
+git status
+
+```
+
+**この確認を怠ると**:
+- デグレッション（既存機能の破壊）
+- 不完全な実装の放置
+- 次の作業者が混乱
+
 ### 設計原則
 
 | 原則 | 説明 |
@@ -322,82 +365,45 @@ with patch("api.endpoints.fetch_children_list", ...):
 うまく行かない場合、ベストプラクティスを調査する。
 以下の問題が繰り返し発生しています。**必ず予防策を実施してください。**
 
-### 問題1: リファクタリング時の機能破壊
+### リファクタリング時の機能破壊
 
-**症状**: 一つの機能を修正すると、別の機能が壊れる
-*   例: 「Add to Notion」修正 → 「Content Modal」が動かなくなる
-
-**予防策**:
-1.  **手動リグレッションテスト**: `main.js` または `index.py` を変更したら、以下を必ず確認:
-    - ✅ **Chat**: メッセージ送信が動作する
-    - ✅ **Save**: 「Notionに追加」が Notion に保存される
-    - ✅ **Content**: 「Content」ボタンでモーダルが開く
-    - ✅ **Settings**: モデル一覧が読み込まれる
-
-### 問題2: API エンドポイントの不整合
-
-**症状**: バックエンドでルート名を変更したが、フロントエンドが古いパスを呼び続ける
-*   例: `/api/content` → `/api/get_content` に変更 → 404 エラー
+**症状**: ある機能の修正が無関係な機能を破壊する
 
 **予防策**:
--   **変更前に検索**: `index.py` のルート変更前に、`public/` フォルダ内で該当文字列を検索
+-  **手動リグレッションテスト**: コアファイル（`main.js`, `index.py` 等）を変更したら、主要機能（Chat、Save、Content、Settings）の動作を必ず確認
 
-### 問題3: UI/CSS のレグレッション
+### API エンドポイントの不整合
+
+**症状**: バックエンドのルート名変更後、フロントエンドが旧パスを参照し続けて 404 になる
+
+**予防策**:
+-   **変更前に検索**: ルート変更前に `public/` 内で該当文字列を検索し、全参照箇所を更新する
+
+### UI/CSS のレグレッション
 
 **症状**: 一箇所のスタイル修正が、別の場所のレイアウトを崩す
-*   例: ドロップダウンの余白修正 → リストの配置がずれる
-
-### 問題4: 作業完了後のヌケモレ
-
-**症状**: 作業を完了したつもりでも、見落としや未完了の箇所が残っている
-*   例: logger移行で一部ファイルを見落とす、テスト実行を忘れる、ドキュメント更新を忘れる
-
-**必須チェックリスト（作業完了時）**:
-
-#### 1. コード品質確認
-```bash
-# 意図した変更がすべて適用されているか
-# やり残しがないか、不要なものが残ってないか。
-# 型定義の更新が必要な箇所はないか
-# lintエラーはないか
-# 似た問題が他にないか確認する
-```
-
-#### 2. テスト実行
-```bash
-# 全テストが通ることを確認
-pytest -v --tb=short
-```
-
-#### 3. 実行確認
-- サーバーが正常に起動するか
-- 主要機能が動作するか（Chat、Save、Settingsなど）
-
-#### 4. ドキュメント更新
-- `README.md`: 変更があれば更新
-- `AGENTS.md`: 新しい問題パターンや予防策を追加。AGENTS.mdが500行を超えたら、重要度の低い項目を要点のみ端的に要約して減らす。
-- `task.md`: 完了項目をチェック
-- 完了レポート（walkthrough）: 変更内容を記録
-
-#### 5. Git確認
-```bash
-# 意図しないファイルが含まれていないか
-git status
-
-# .envなど秘密情報が含まれていないか
-git diff
-```
-
-**この確認を怠ると**:
-- デグレッション（既存機能の破壊）
-- 不完全な実装の放置
-- 次の作業者が混乱
 
 **予防策**:
 -   CSS 変更時は **デスクトップ** と **モバイル** の両方で確認
 -   削除前にブラウザ開発者ツールで影響範囲を確認
 
-### 問題5: Vercel ビルドエラー（pyproject.toml）
+### 作業完了後のヌケモレ
+
+**症状**: 変更対象の一部を見落とす、テスト実行やドキュメント更新を忘れる
+
+**予防策**:
+-   ファイル冒頭の **必須チェックリスト（作業完了時）** を必ず実行する
+
+### 横断確認の原則
+
+**症状**: 1ファイルの問題を修正したが、同じパターンの問題が他ファイルに残っている
+
+**予防策**:
+- **問題を1つ見つけたら、同種の全ファイルを確認する**。特定ファイルだけでなく、同じ技術（JS, Python等）の全ファイルに同じチェックを適用する
+- チェック手段は**プロジェクト設定に従う**。独自の簡易チェックで済ませず、設定済みのツール（`jsconfig.json`の型チェック、`pytest`、`ruff`等）を使う
+- 簡易チェック（`node --check`等）は構文エラーしか検出しない。型エラー・未使用変数・ベストプラクティス違反は検出できないことを認識する
+
+### Vercel ビルドエラー（pyproject.toml）
 
 **症状**: Vercel デプロイ時に `No [project] table found` エラー
 
@@ -407,131 +413,50 @@ git diff
 -   `pyproject.toml` に `[project]` テーブルを常に含める
 -   依存関係を `pyproject.toml` と `requirements.txt` の両方に同期
 
+### 「重複する」バグのデバッグ手順
+
+**症状**: 同じ処理が多重実行される（ページ二重作成、リスト項目の重複表示 等）
+
+**根本原因パターン**:
+1. **トリガー側の多重発火**: イベントリスナーが蓄積し、1回の操作で複数回ハンドラが実行される
+2. **処理チェーンの重複呼び出し**: 複数箇所から同じ関数が呼ばれ、処理が多重実行される
+3. **暗黙のデフォルト値**: 引数の有無で挙動が変わる関数で、呼び出し側が意図しない動作を引き起こす
+
+**予防策**:
+
+#### デバッグ時の切り分け原則（最重要）
+「重複する」バグに遭遇したら、パッチを当てる前にまず**どの段階で重複が発生しているか**を特定する:
+```
+① トリガー（イベント発火） → ② 処理（API呼び出し） → ③ 表示（DOM更新）
+```
+- **①が原因**: リスナーの蓄積・重複登録 → リスナーのクリーンアップを確認
+- **②が原因**: 関数の多重呼び出し → grep で全呼び出し元を洗い出す
+- **③が原因**: 描画ロジックのバグ → innerHTML のクリア忘れ等
+
+#### イベントリスナーのクリーンアップ確認
+モーダル等の繰り返し開閉される UI では、**全ての終了パス**（ボタンクリック、Enterキー、Escapeキー、×ボタン）でリスナーが削除されるか確認する
+
+#### 対症療法は最大2回まで
+2回パッチを当てても直らない場合は手を止め、フロー全体を図示してから根本原因を特定する
+
 ---
 
 ## UI実装ガイドライン
 
-### モーダルダイアログ実装チェックリスト
+### モーダルダイアログ実装ルール
 
-新しいモーダルを追加する際は、必ず以下を確認してください:
+- `alert()`, `confirm()`, `prompt()` 等のネイティブダイアログは**使用禁止**
+- 既存の `.modal` 系CSSクラス（`.modal`, `.modal-content`, `.modal-header`, `.modal-body`, `.modal-footer`, `.btn-primary`, `.btn-secondary` 等）を使う。独自クラスを作らない
+- `.prop-field`, `.prop-label`, `.prop-input` はプロパティフォーム専用。モーダルには使用しない
+- HTML構造: `.modal.hidden` > `.modal-content` > `.modal-header` + `.modal-body` + `.modal-footer`
+- JS: 表示は `classList.remove('hidden')`、非表示は `classList.add('hidden')`
+- **参考実装**: `newPageModal`（main.js）、`promptModal`（prompt.js）
 
-#### ❌ 禁止事項
+### イベントリスナー管理
 
-- `alert()`, `confirm()`, `prompt()`などのブラウザネイティブダイアログを使用しない
-- 独自のCSSクラスを作らず、既存のモーダル用クラスを使用する
-
-#### ✅ 標準HTMLパターン
-
-```html
-<div id="xxxModal" class="modal hidden">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>タイトル</h2>
-            <button id="closeXxxModalBtn" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-            <div class="modal-info">
-                <label for="xxxInput"><strong>ラベル:</strong></label>
-                <input type="text" id="xxxInput" class="target-select" 
-                       style="width: 100%; margin-top: 8px;">
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button id="cancelXxxBtn" class="btn-secondary">キャンセル</button>
-            <button id="saveXxxBtn" class="btn-primary">保存</button>
-        </div>
-    </div>
-</div>
-```
-
-#### ✅ 標準JavaScriptパターン
-
-```javascript
-function openXxxModal() {
-    const modal = document.getElementById('xxxModal');
-    const input = document.getElementById('xxxInput');
-    const saveBtn = document.getElementById('saveXxxBtn');
-    const cancelBtn = document.getElementById('cancelXxxBtn');
-    const closeBtn = document.getElementById('closeXxxModalBtn');
-    
-    if (!modal || !input || !saveBtn || !cancelBtn || !closeBtn) return;
-    
-    input.value = '';
-    modal.classList.remove('hidden');
-    input.focus();
-    
-    const handleSave = () => {
-        const value = input.value.trim();
-        if (value) {
-            modal.classList.add('hidden');
-            // 保存処理
-        } else {
-            showToast('入力してください');
-        }
-    };
-    
-    const handleCancel = () => {
-        modal.classList.add('hidden');
-    };
-    
-    const onKeydown = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleSave(); }
-        else if (e.key === 'Escape') { handleCancel(); }
-    };
-    
-    // {once: true}で自動クリーンアップ
-    saveBtn.addEventListener('click', handleSave, {once: true});
-    cancelBtn.addEventListener('click', handleCancel, {once: true});
-    closeBtn.addEventListener('click', handleCancel, {once: true});
-    input.addEventListener('keydown', onKeydown);
-    
-    const removeKeyListener = () => { input.removeEventListener('keydown', onKeydown); };
-    saveBtn.addEventListener('click', removeKeyListener, {once: true});
-    cancelBtn.addEventListener('click', removeKeyListener, {once: true});
-    closeBtn.addEventListener('click', removeKeyListener, {once: true});
-}
-```
-
-**参考実装**: `newPageModal` (main.js: 777-836), `promptModal` (prompt.js)
-
-### CSS クラス使用ガイドライン
-
-#### モーダル専用クラス
-
-| クラス名 | 用途 |
-|:---|:---|
-| `.modal` | モーダル全体のコンテナ |
-| `.modal-content` | モーダルの中身 |
-| `.modal-header` | ヘッダー部分 |
-| `.modal-body` | ボディ部分 |
-| `.modal-footer` | フッター部分 |
-| `.modal-info` | 情報表示エリア（グレー背景） |
-| `.close-btn` | ×閉じるボタン |
-| `.btn-primary` | メインアクションボタン |
-| `.btn-secondary` | キャンセルボタン |
-| `.target-select` | 入力フィールド |
-
-#### ❌ モーダルで使用禁止
-
-`.prop-field`, `.prop-label`, `.prop-input` → これらは**プロパティフォーム専用**
-
-### イベントリスナー管理ベストプラクティス
-
-#### パターン1: `{once: true}` オプション（推奨）
-
-```javascript
-button.addEventListener('click', handler, {once: true});
-// ✅ 1回実行後に自動削除される
-```
-
-#### パターン2: `cloneNode()` による置換
-
-```javascript
-const newElement = element.cloneNode(true);
-element.parentNode.replaceChild(newElement, element);
-newElement.addEventListener('click', handler);
-// ✅ 古いリスナーが確実に削除される
-```
+- **推奨**: `{once: true}` オプションで自動クリーンアップ
+- **代替**: `cloneNode(true)` で要素を置換し、古いリスナーを確実に削除
+- モーダル等の繰り返し開閉されるUIでは、全ての終了パス（ボタン、Enter、Escape、×）でリスナーが削除されるか確認する
 
 ---
 

@@ -287,7 +287,6 @@ export async function handleAddFromBubble(entry) {
     const showToast = window.showToast;
     const setLoading = window.setLoading;
     const recordApiCall = window.recordApiCall;
-    const clearPreviewImage = window.clearPreviewImage;
     
     if (!entry || !entry.message) return;
     
@@ -471,10 +470,7 @@ export async function handleChatAI(inputText = null) {
     const historyToSend = window.App.chat.session.slice(-10);
     
     // 3. AIへのコンテキスト用にメッセージを追加
-    let contextMessage = text || '';
-    if (contextMessage && imageToSend) {
-         // Keep text only if present
-    }
+    const contextMessage = text || '';
     if (contextMessage) {
         window.App.chat.session.push({role: 'user', content: contextMessage});
     }

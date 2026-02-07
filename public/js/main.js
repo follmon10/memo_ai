@@ -73,7 +73,8 @@ const App = {
         TTL: {
             TARGETS: 5 * 60 * 1000, // 5 minutes (DB list caches slightly longer)
             PAGE_CONTENT: 10 * 60 * 1000 // 10 minutes
-        }
+        },
+        lastTargetRefresh: 0 // Timestamp of last target list refresh
     },
     
     // Application State
@@ -262,7 +263,16 @@ window.fetchWithCache = fetchWithCache;
 
 // --- Notion Logic (Targets, Saving, Forms) ---
 
+let _loadTargetsRunning = false;
+
 async function loadTargets(forceRefresh = false) {
+    // Prevent concurrent calls that could cause duplicate entries
+    if (_loadTargetsRunning) {
+        debugLog('[loadTargets] Already running - skipping');
+        return;
+    }
+    _loadTargetsRunning = true;
+    
     try {
         let data;
         
@@ -288,6 +298,9 @@ async function loadTargets(forceRefresh = false) {
         }
         
         renderTargetOptions(data.targets);
+        
+        // Update last refresh timestamp
+        App.cache.lastTargetRefresh = Date.now();
 
         // Enable header buttons after targets load
         /** @type {HTMLButtonElement | null} */
@@ -299,6 +312,8 @@ async function loadTargets(forceRefresh = false) {
     } catch (err) {
         console.error('Failed to load targets:', err);
         showToast('ターゲット読込失敗');
+    } finally {
+        _loadTargetsRunning = false;
     }
 }
 window.loadTargets = loadTargets;
@@ -369,11 +384,18 @@ function renderTargetOptions(targets) {
         // Fallback if no targets exist at all (only "Create New Page")
         selector.value = 'new_page'; 
     }
+    
+    // Auto-open new page modal if no valid targets exist (empty list)
+    if (validTargets.length === 0) {
+        // Use setTimeout to ensure DOM is fully rendered and modal event listeners are ready
+        setTimeout(() => {
+            debugLog('[renderTargetOptions] No pages found - opening new page modal');
+            openNewPageModal();
+        }, 100);
+    }
 }
 
 async function handleTargetChange(skipRefreshOrEvent = false) {
-    // HTMLイベントから呼ばれた場合はEventオブジェクトが渡されるため、booleanかどうかをチェック
-    const skipRefresh = skipRefreshOrEvent === true;
     
     /** @type {HTMLSelectElement | null} */
     const selector = /** @type {any} */(document.getElementById('appSelector'));
@@ -453,13 +475,8 @@ async function handleTargetChange(skipRefreshOrEvent = false) {
         if (propsContainer) propsContainer.style.display = 'none';
     }
     
-    // バックグラウンドでリストを更新（削除されたページを反映）
-    // skipRefresh=true の場合は無限ループ防止のためスキップ
-    if (!skipRefresh) {
-        setTimeout(() => {
-            loadTargets(true);
-        }, 100);
-    }
+    // Note: リスト更新はセレクターの click イベントリスナーで行う（5秒スロットリング付き）
+    // handleTargetChange 内では実行しない（二重更新防止）
 }
 window.handleTargetChange = handleTargetChange;
 
@@ -791,25 +808,6 @@ function openNewPageModal() {
     modal.classList.remove('hidden');
     input.focus();
     
-    // Handle create button
-    const handleCreate = () => {
-        const title = input.value.trim();
-        if (title) {
-            modal.classList.add('hidden');
-            createNewPage(title);
-        } else {
-            showToast('ページ名を入力してください');
-        }
-    };
-    
-    // Handle cancel
-    const handleCancel = () => {
-        modal.classList.add('hidden');
-        // Reset app selector to previous value
-        const appSelector = /** @type {HTMLSelectElement} */(document.getElementById('appSelector'));
-        if (appSelector) appSelector.value = App.target.id || '';
-    };
-    
     // Handle keyboard events
     const onKeydown = (/** @type {KeyboardEvent} */ e) => {
         if (e.key === 'Enter') {
@@ -820,19 +818,34 @@ function openNewPageModal() {
         }
     };
     
+    // Handle create button
+    const handleCreate = () => {
+        const title = input.value.trim();
+        if (title) {
+            // Clean up listener BEFORE closing modal
+            input.removeEventListener('keydown', onKeydown);
+            modal.classList.add('hidden');
+            createNewPage(title);
+        } else {
+            showToast('ページ名を入力してください');
+        }
+    };
+    
+    // Handle cancel
+    const handleCancel = () => {
+        // Clean up listener BEFORE closing modal
+        input.removeEventListener('keydown', onKeydown);
+        modal.classList.add('hidden');
+        // Reset app selector to previous value
+        const appSelector = /** @type {HTMLSelectElement} */(document.getElementById('appSelector'));
+        if (appSelector) appSelector.value = App.target.id || '';
+    };
+    
     // Add event listeners with {once: true} to auto-cleanup
     createBtn.addEventListener('click', handleCreate, {once: true});
     cancelBtn.addEventListener('click', handleCancel, {once: true});
     closeBtn.addEventListener('click', handleCancel, {once: true});
     input.addEventListener('keydown', onKeydown);
-    
-    // Remove keydown listener when modal closes
-    const removeKeyListener = () => {
-        input.removeEventListener('keydown', onKeydown);
-    };
-    createBtn.addEventListener('click', removeKeyListener, {once: true});
-    cancelBtn.addEventListener('click', removeKeyListener, {once: true});
-    closeBtn.addEventListener('click', removeKeyListener, {once: true});
 }
 window.openNewPageModal = openNewPageModal;
 
@@ -850,16 +863,15 @@ async function createNewPage(title) {
         const data = await res.json();
         showToast(`ページ「${title}」を作成しました`);
         
-        // ターゲットリスト再読み込み
-        localStorage.removeItem(App.cache.KEYS.TARGETS);
-        await loadTargets();
+        // ターゲットリスト再読み込み（強制更新で最新のリストを取得）
+        await loadTargets(true);
         
-        // 作成したページを選択
+        // 作成したページを選択（skipRefresh=true でリスト再取得を防止）
         /** @type {HTMLSelectElement | null} */
         const selector = /** @type {any} */(document.getElementById('appSelector'));
         if (selector) {
             selector.value = data.id;
-            handleTargetChange();
+            handleTargetChange(true);
         }
         
     } catch(e) {
@@ -1155,6 +1167,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (appSelector) {
         // Wrap handleTargetChange to match event listener signature
         appSelector.addEventListener('change', () => handleTargetChange(false));
+        
+        // Refresh list when selector is clicked/opened (to detect deleted pages)
+        // Throttle: Don't refresh if last refresh was within 5 seconds
+        appSelector.addEventListener('click', () => {
+            const now = Date.now();
+            const timeSinceLastRefresh = now - App.cache.lastTargetRefresh;
+            const THROTTLE_MS = 5000; // 5 seconds
+            
+            if (timeSinceLastRefresh < THROTTLE_MS) {
+                debugLog(`[appSelector] Clicked but skipping refresh (last refresh was ${Math.round(timeSinceLastRefresh / 1000)}s ago)`);
+                return;
+            }
+            
+            debugLog('[appSelector] Clicked - refreshing target list');
+            loadTargets(true);
+        });
     }
     
     // State display toggle button

@@ -14,10 +14,14 @@ export function openPromptModal() {
     }
     
     const modal = document.getElementById('promptModal');
-    const selector = document.getElementById('promptTargetSelect');
-    const textarea = document.getElementById('promptTextarea');
-    const saveBtn = document.getElementById('savePromptBtn');
-    const resetBtn = document.getElementById('resetPromptBtn');
+    /** @type {HTMLSelectElement} */
+    const selector = /** @type {any} */(document.getElementById('promptTargetSelect'));
+    /** @type {HTMLTextAreaElement} */
+    const textarea = /** @type {any} */(document.getElementById('promptTextarea'));
+    /** @type {HTMLButtonElement} */
+    const saveBtn = /** @type {any} */(document.getElementById('savePromptBtn'));
+    /** @type {HTMLButtonElement} */
+    const resetBtn = /** @type {any} */(document.getElementById('resetPromptBtn'));
     
     // ターゲットリストを読み込み（キャッシュから）
     const cachedTargets = localStorage.getItem(window.App.cache.KEYS.TARGETS);
@@ -69,18 +73,21 @@ export function openPromptModal() {
     
     // ターゲット変更時のイベントリスナーを設定
     // 既存のリスナーを削除してから追加（重複防止）
-    const newSelector = selector.cloneNode(true);
+    /** @type {HTMLSelectElement} */
+    const newSelector = /** @type {any} */(selector.cloneNode(true));
     selector.parentNode.replaceChild(newSelector, selector);
     
     newSelector.addEventListener('change', function(e) {
-        const newTargetId = e.target.value;
-        const prevTargetId = e.target.dataset.prevValue;
+        /** @type {HTMLSelectElement} */
+        const target = /** @type {any} */(e.target);
+        const newTargetId = target.value;
+        const prevTargetId = target.dataset.prevValue;
         
         // 変更がある場合は確認
         if (textarea.value !== promptOriginalValue) {
             showDiscardConfirmation(() => {
                 // 破棄を確認したら新しいターゲットに切り替え
-                e.target.dataset.prevValue = newTargetId;
+                target.dataset.prevValue = newTargetId;
                 loadPromptForTarget(newTargetId);
             });
             // キャンセルされた場合は元に戻す
@@ -88,13 +95,13 @@ export function openPromptModal() {
             // しかし、selectの値は既に変わってしまっているので戻す必要がある
             // この処理を非同期で行う
             setTimeout(() => {
-                if (e.target.dataset.prevValue !== newTargetId) {
-                    e.target.value = e.target.dataset.prevValue;
+                if (target.dataset.prevValue !== newTargetId) {
+                    target.value = target.dataset.prevValue;
                 }
             }, 100);
         } else {
             // 変更がない場合はそのまま切り替え
-            e.target.dataset.prevValue = newTargetId;
+            target.dataset.prevValue = newTargetId;
             loadPromptForTarget(newTargetId);
         }
     });
@@ -131,7 +138,8 @@ export function showDiscardConfirmation(onConfirm) {
 
 // システムプロンプトモーダルを閉じる
 export function closePromptModal() {
-    const textarea = document.getElementById('promptTextarea');
+    /** @type {HTMLTextAreaElement} */
+    const textarea = /** @type {any} */(document.getElementById('promptTextarea'));
     // 変更がある場合は警告
     if (textarea && textarea.value !== promptOriginalValue) {
         showDiscardConfirmation(() => {
@@ -148,14 +156,18 @@ export function closePromptModal() {
 // システムプロンプトを保存
 export async function saveSystemPrompt() {
     const showToast = window.showToast;
-    const selector = document.getElementById('promptTargetSelect');
+    /** @type {HTMLSelectElement} */
+    const selector = /** @type {any} */(document.getElementById('promptTargetSelect'));
     const targetId = selector?.value || window.App.target.id;
     
     if (!targetId) return;
 
-    const textarea = document.getElementById('promptTextarea');
-    const saveBtn = document.getElementById('savePromptBtn');
-    const resetBtn = document.getElementById('resetPromptBtn');
+    /** @type {HTMLTextAreaElement} */
+    const textarea = /** @type {any} */(document.getElementById('promptTextarea'));
+    /** @type {HTMLButtonElement} */
+    const saveBtn = /** @type {any} */(document.getElementById('savePromptBtn'));
+    /** @type {HTMLButtonElement} */
+    const resetBtn = /** @type {any} */(document.getElementById('resetPromptBtn'));
     const newPrompt = textarea.value.trim();
     
     saveBtn.disabled = true;
@@ -213,7 +225,8 @@ export async function saveSystemPrompt() {
 // システムプロンプトをリセット
 export function resetSystemPrompt() {
     const showToast = window.showToast;
-    const textarea = document.getElementById('promptTextarea');
+    /** @type {HTMLTextAreaElement} */
+    const textarea = /** @type {any} */(document.getElementById('promptTextarea'));
     if (textarea) {
         textarea.value = window.App.defaultPrompt;
         showToast('デフォルトのテキストを入力しました');
@@ -222,8 +235,10 @@ export function resetSystemPrompt() {
 
 // ターゲットプロンプト読み込み処理
 export function loadPromptForTarget(targetId) {
-    const textarea = document.getElementById('promptTextarea');
-    const resetBtn = document.getElementById('resetPromptBtn');
+    /** @type {HTMLTextAreaElement} */
+    const textarea = /** @type {any} */(document.getElementById('promptTextarea'));
+    /** @type {HTMLButtonElement} */
+    const resetBtn = /** @type {any} */(document.getElementById('resetPromptBtn'));
     
     const promptKey = `${window.App.cache.KEYS.PROMPT_PREFIX}${targetId}`;
     const savedPrompt = localStorage.getItem(promptKey);
