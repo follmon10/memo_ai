@@ -1312,8 +1312,6 @@ body {
 }
 
 /* デバッグ情報コンテンツ（スクロールは .modal-body に委譲） */
-.debug-info-content {
-}
 
 .debug-timestamp {
     text-align: right;

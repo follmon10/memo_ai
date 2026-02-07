@@ -25,8 +25,8 @@ interface Window {
     sendStamp: (emoji: string) => void;
     showAITypingIndicator: () => void;
     hideAITypingIndicator: () => void;
-    addChatMessage: (role: string, text: string, metadata?: any) => void;
-    handleAddFromBubble: (content: string) => void;
+    addChatMessage: (role: string, text: string, metadata?: any, modelInfo?: any) => void;
+    handleAddFromBubble: (entry: any) => void;
 
     // Prompt functions
     openPromptModal: () => void;
@@ -72,6 +72,7 @@ interface Window {
                 PAGE_CONTENT_PREFIX: string;
                 CHAT_HISTORY: string;
                 PROMPT_PREFIX: string;
+                SHOW_MODEL_INFO: string;
             };
             TTL: {
                 TARGETS: number;

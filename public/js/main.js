@@ -69,7 +69,8 @@ const App = {
             TARGETS: 'memo_ai_targets',
             PAGE_CONTENT_PREFIX: 'memo_ai_content_',
             CHAT_HISTORY: 'memo_ai_chat_history',
-            PROMPT_PREFIX: 'memo_ai_prompt_'
+            PROMPT_PREFIX: 'memo_ai_prompt_',
+            SHOW_MODEL_INFO: 'memo_ai_show_model_info'
         },
         TTL: {
             TARGETS: 5 * 60 * 1000, // 5 minutes (DB list caches slightly longer)
@@ -265,6 +266,58 @@ async function fetchWithCache(url, cacheKey, ttl = 60000) {
     return data;
 }
 window.fetchWithCache = fetchWithCache;
+
+
+// --- Cache Cleanup ---
+
+/**
+ * 起動時にlocalStorageの期限切れキャッシュを削除する。
+ * localStorage容量制限（約5MB）への到達を防止する。
+ */
+function cleanUpCache() {
+    const now = Date.now();
+    const deleted = [];
+    
+    // Iterate backwards to avoid index shifting when removing items
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        
+        // Only clean cache keys managed by this app
+        const isContentCache = key.startsWith(App.cache.KEYS.PAGE_CONTENT_PREFIX);
+        const isTargetsCache = key === App.cache.KEYS.TARGETS;
+        
+        if (!isContentCache && !isTargetsCache) continue;
+        
+        try {
+            const item = JSON.parse(localStorage.getItem(key));
+            if (!item || !item.timestamp) {
+                // Corrupted entry (no timestamp) — remove
+                localStorage.removeItem(key);
+                deleted.push(key);
+                continue;
+            }
+            
+            // Use appropriate TTL per key type, with 2x safety margin
+            const ttl = isContentCache
+                ? App.cache.TTL.PAGE_CONTENT * 2
+                : App.cache.TTL.TARGETS * 2;
+            
+            if (now - item.timestamp > ttl) {
+                localStorage.removeItem(key);
+                deleted.push(key);
+            }
+        } catch (e) {
+            // JSON parse failed — corrupted entry, remove it
+            localStorage.removeItem(key);
+            deleted.push(key);
+        }
+    }
+    
+    if (deleted.length > 0) {
+        debugLog(`[Cache] Cleaned up ${deleted.length} expired item(s)`);
+    }
+}
 
 
 // --- Notion Logic (Targets, Saving, Forms) ---
@@ -990,6 +1043,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Cache housekeeping (remove expired items before loading new data)
+    cleanUpCache();
+    
     // Initial Loads
     loadTargets();      // Load Notion targets
     loadChatHistory();  // Load chat history

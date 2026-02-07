@@ -29,8 +29,10 @@ from api.config import (
     normalize_notion_id,
 )
 
-# レート制限
-from api.rate_limiter import rate_limiter
+
+# Endpoints definition
+from api.endpoints import router as endpoints_router
+
 
 # 環境変数の読み込み
 # ローカル環境では.envファイルから読み込み、Vercel環境では環境変数から直接読み込み
@@ -109,7 +111,7 @@ async def lifespan(app: FastAPI):
             import subprocess
             import glob
 
-            js_files = glob.glob("public/*.js")
+            js_files = glob.glob("public/js/*.js")
             syntax_errors = []
 
             for js_file in js_files:
@@ -187,7 +189,7 @@ async def lifespan(app: FastAPI):
 
         print("")
         print("💡 サーバーを停止するには: Ctrl + C を押してください")
-        print("=")
+        print("=" * 70)
 
     # 環境変数の簡易チェック
     if not is_vercel:
@@ -290,11 +292,9 @@ app.add_middleware(
 
 # --- Endpoints Router Include ---
 # System系エンドポイントをendpoints.pyに分離
-from api.endpoints import router as endpoints_router
-import api.endpoints as endpoints_module
+# (Included at top of file)
 
-# endponts.pyにrate_limiterを渡す（循環参照回避のため）
-endpoints_module.rate_limiter = rate_limiter
+# endponts.pyへのrate_limiter注入は不要になりました（直接importに変更）
 
 app.include_router(endpoints_router)
 

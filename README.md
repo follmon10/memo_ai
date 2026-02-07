@@ -71,6 +71,59 @@ python -m uvicorn api.index:app --reload --host 0.0.0.0
 
 ---
 
+## ☁️ Vercel デプロイ
+
+### 前提条件
+- GitHub リポジトリと Vercel アカウントを連携済み
+- `public/` 内の静的ファイルは Vercel CDN が自動配信（FastAPI側のマウント不要）
+
+### 環境変数の設定
+
+Vercel ダッシュボード → Settings → Environment Variables に以下を追加：
+
+| 変数名 | 必須 | 備考 |
+|--------|------|------|
+| `NOTION_API_KEY` | ✅ | Notion Integration トークン |
+| `NOTION_ROOT_PAGE_ID` | ✅ | 32桁の英数字（ハイフンなし） |
+| `GEMINI_API_KEY` | ✅ | Google AI Studio から取得 |
+| `ALLOWED_ORIGINS` | 推奨 | `https://your-domain.vercel.app`（CORS制限） |
+| `DEBUG_MODE` | ❌ | **本番では必ず `False`**（デフォルト`False`） |
+
+### vercel.json の構成
+
+```jsonc
+{
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index.py" }],
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60,              // Hobby上限60秒、Pro上限300秒
+      "excludeFiles": "{tests/**,venv/**,...}"  // バンドル250MB制限対策
+    }
+  }
+}
+```
+
+### ⚠️ サーバーレス環境の制約
+
+| 制約 | 内容 | 対策 |
+|------|------|------|
+| **タイムアウト** | Hobby: 最大60秒 / Pro: 最大300秒 | AI API呼び出しが長い場合はPro推奨 |
+| **バンドルサイズ** | 非圧縮250MB上限 | `excludeFiles` で `tests/`, `venv/` 等を除外 |
+| **コールドスタート** | 初回アクセス時に数秒のレイテンシ | LiteLLM等の大きいパッケージは影響大 |
+| **ステートレス** | リクエスト間で状態が保持されない | レート制限はインメモリのためリセットされる |
+| **Python バージョン** | デフォルト3.12 / 対応: 3.12〜3.14 | `pyproject.toml` の `requires-python` で指定 |
+
+### よくあるデプロイエラー
+
+| エラー | 原因 | 対処 |
+|--------|------|------|
+| `No [project] table found` | `pyproject.toml` に `[project]` テーブルがない | Vercelは `uv` を使うため必須 |
+| 静的ファイルの404 | `public/` が CDN 配信されていない | Vercelのプロジェクト設定で Output Directory を確認 |
+| API 504 Timeout | AI処理がプランの制限時間を超過 | `maxDuration` を引き上げるか Pro プラン |
+| 依存パッケージ不足 | `requirements.txt` と `pyproject.toml` の不一致 | 両ファイルの依存関係を同期 |
+
+---
+
 ## 🛠️ カスタマイズ
 
 コードを少し編集するだけで、自分だけのAIを作れます。

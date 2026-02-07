@@ -310,7 +310,7 @@ async def fetch_recent_pages(target_db_id: str, limit: int = 3) -> List[Dict[str
 
     results = []
     for page in response.get("results", []):
-        results.append(page.get("properties", {}))
+        results.append(page)
     return results
 
 

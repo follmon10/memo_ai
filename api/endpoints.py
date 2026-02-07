@@ -30,9 +30,11 @@ from api.notion import (
 from api.models import get_available_models, get_text_models, get_vision_models
 from api.schemas import AnalyzeRequest, ChatRequest, SaveRequest
 
+from api.rate_limiter import rate_limiter
+
 # rate_limiterはindex.pyから参照が必要（循環参照回避のため）
-# この変数はindex.pyで初期化後、endpoints使用前にセットする必要がある
-rate_limiter = None
+# → rate_limiterモジュールから直接インポートすることで循環参照を解決済み
+
 
 # FastAPI Router
 router = APIRouter()
@@ -299,7 +301,7 @@ async def analyze_endpoint(request: Request, analyze_req: AnalyzeRequest):
         system_prompt = "You are a helpful assistant."
 
     current_time_str = get_current_jst_str()
-    system_prompt = f"Current Time: {current_time_str}\\n\\n{system_prompt}"
+    system_prompt = f"Current Time: {current_time_str}\n\n{system_prompt}"
 
     # 3. AIによる分析実行
     try:
@@ -390,7 +392,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
             system_prompt = DEFAULT_SYSTEM_PROMPT
 
         current_time_str = get_current_jst_str()
-        system_prompt = f"Current Time: {current_time_str}\\n\\n{system_prompt}"
+        system_prompt = f"Current Time: {current_time_str}\n\n{system_prompt}"
 
         session_history = chat_req.session_history or []
         if chat_req.reference_context:
