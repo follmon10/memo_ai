@@ -27,7 +27,7 @@ export function compressImage(file, maxDimension = 600, quality = 0.7) {
                     }
                 }
                 
-                console.log(`[Image Compress] Original: ${img.width}x${img.height}, Compressed: ${width}x${height}`);
+
                 
                 // Create canvas and compress
                 const canvas = document.createElement('canvas');
@@ -186,12 +186,13 @@ export async function capturePhotoFromCamera() {
             }
             
             // Translate common errors
-            let errorMsg = err.message;
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            const error = /** @type {Error} */(err);
+            let errorMsg = error.message;
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                 errorMsg = 'カメラへのアクセスが拒否されました';
-            } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
                 errorMsg = 'カメラが見つかりませんでした';
-            } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
                 errorMsg = 'カメラは別のアプリケーションで使用中です';
             }
             
@@ -229,7 +230,7 @@ export function readFileAsBase64(file) {
 }
 
 export function setPreviewImage(base64, mimeType) {
-    console.log('[Preview] Setting preview image, mime:', mimeType, 'size:', base64.length, 'chars');
+
     window.App.image.base64 = base64;
     window.App.image.mimeType = mimeType;
     
@@ -239,11 +240,11 @@ export function setPreviewImage(base64, mimeType) {
     
     previewImg.src = `data:${mimeType};base64,${base64}`;
     previewArea.classList.remove('hidden');
-    console.log('[Preview] Preview area shown');
+
 }
 
 export function clearPreviewImage() {
-    console.log('[Preview] Clearing preview image');
+
     window.App.image.base64 = null;
     window.App.image.mimeType = null;
     
@@ -358,5 +359,5 @@ export function setupImageHandlers() {
         });
     }
     
-    console.log('[Images] Event handlers initialized (Refactored)');
+
 }

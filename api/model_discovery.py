@@ -116,6 +116,11 @@ def get_gemini_models() -> List[Dict[str, Any]]:
                         # ただし、embedding系は除外
                         supports_vision = "embed" not in model_name.lower()
 
+                    # 画像生成モデルの検出
+                    # 命名規則: Gemini画像モデルは全て "image" を含む
+                    # 例: gemini-2.5-flash-image, gemini-2.5-flash-image-preview
+                    is_image_generation = "image" in model_name.lower()
+
                     models.append(
                         {
                             "id": f"gemini/{model_name}",
@@ -123,7 +128,7 @@ def get_gemini_models() -> List[Dict[str, Any]]:
                             "provider": "Gemini API",
                             "litellm_provider": "gemini",
                             "supports_vision": supports_vision,
-                            "supports_json": True,
+                            "supports_json": not is_image_generation,
                             "description": getattr(model, "description", ""),
                             "recommended": is_recommended,
                             "supported_methods": list(methods),  # デバッグ用

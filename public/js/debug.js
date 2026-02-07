@@ -2,6 +2,15 @@
 // デバッグモーダルとAPI記録機能
 
 /**
+ * デバッグログヘルパー
+ */
+export function debugLog(...args) {
+    if (window.App && window.App.debug && window.App.debug.enabled) {
+        console.log('[DEBUG]', ...args);
+    }
+}
+
+/**
  * デバッグモーダルを開く
  */
 export function openDebugModal() {
@@ -36,10 +45,11 @@ export async function loadDebugInfo() {
         const data = await res.json();
         renderDebugInfo(data);
     } catch (err) {
+        const errorMessage = /** @type {Error} */(err).message;
         content.innerHTML = `
             <div class="debug-error">
                 <h3>❌ デバッグ情報の取得に失敗</h3>
-                <p>${err.message}</p>
+                <p>${errorMessage}</p>
                 <p class="debug-hint">
                     💡 ヒント: サーバーが起動しているか確認してください
                 </p>
@@ -85,7 +95,7 @@ function renderDebugInfo(data) {
         window.App.debug.lastAllLogs = allLogs;
 
         html += '<div class="debug-section">';
-        html += '<h3>📡 API通信 <button class="btn-copy-debug" onclick="window.copyApiHistory()">📋 全履歴コピー</button></h3>';
+        html += '<h3>📡 API通信 <button id="btnCopyAllApiHistory" class="btn-copy-debug">📋 全履歴コピー</button></h3>';
         
         if (allLogs.length === 0) {
             html += '<p class="debug-hint">まだAPI通信がありません。</p>';
@@ -97,6 +107,20 @@ function renderDebugInfo(data) {
                 const statusBadge = entry.error 
                     ? `<span style="color:#ff4d4f">❌</span>`
                     : `<span style="color:#52c41a">✅${isNotion ? ' ' + entry.status : ''}</span>`;
+                
+                // LLMの場合、モデル選択の透明性情報を取得
+                let modelInfo = '';
+                let fallbackWarning = '';
+                if (!isNotion && entry.response && entry.response.model_selection) {
+                    const ms = entry.response.model_selection;
+                    if (ms.fallback_occurred) {
+                        fallbackWarning = `<span style="color:#ff9800; font-weight:bold; margin-left:4px;">⚠️ フォールバック</span>`;
+                        modelInfo = `<div style="font-size:0.85em; color:#888; margin-top:2px;">リクエスト: <code style="color:#ff9800;">${ms.requested}</code> → 使用: <code style="color:#52c41a;">${ms.used}</code></div>`;
+                    } else if (ms.requested === 'auto') {
+                        modelInfo = `<div style="font-size:0.85em; color:#888; margin-top:2px;">自動選択: <code>${ms.used}</code></div>`;
+                    }
+                }
+                
                 const label = isNotion 
                     ? `${entry.method} ${entry.endpoint}`
                     : entry.model;
@@ -141,11 +165,12 @@ function renderDebugInfo(data) {
                 const entryJson = JSON.stringify(entry, null, 2).replace(/</g, '&lt;');
                 html += `<details ${i === 0 ? 'open' : ''} style="margin-bottom:4px;">`;
                 html += `<summary style="cursor:pointer; padding:6px 8px; background:var(--bg-secondary); border-radius:4px; font-size:0.85em; display:flex; justify-content:space-between; align-items:center;">`;
-                html += `<span>${typeIcon} <strong>${typeLabel}</strong> ${statusBadge} <code>${label}</code>${titleInfo}`;
+                html += `<span>${typeIcon} <strong>${typeLabel}</strong> ${statusBadge} <code>${label}</code>${fallbackWarning}${titleInfo}`;
                 if (extra.length) html += ` ${extra.join(' ')}`;
                 html += ` <span style="color:#888; font-size:0.85em;">${time}</span></span>`;
                 html += `<button class="btn-copy-debug" style="margin-left:auto; font-size:0.75em; padding:2px 6px;" data-entry-index="${i}" onclick="event.stopPropagation();">📋</button>`;
                 html += `</summary>`;
+                if (modelInfo) html += modelInfo;
                 html += `<pre class="debug-code" style="margin:4px 0; font-size:0.8em; white-space:pre-wrap; word-break:break-all;">${entryJson}</pre>`;
                 html += `</details>`;
             });
@@ -193,19 +218,74 @@ function renderDebugInfo(data) {
             copyApiEntry(index);
         });
     });
+
+    // 全履歴コピーボタンのイベントリスナー
+    const btnCopyAll = document.getElementById('btnCopyAllApiHistory');
+    if (btnCopyAll) {
+        btnCopyAll.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyApiHistory();
+        });
+    }
+}
+
+/**
+ * クリップボードにテキストをコピー (Fallback付き)
+ */
+async function copyToClipboard(text) {
+    if (!text) return false;
+
+    try {
+        // 1. Try modern Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        throw new Error('Clipboard API unavailable');
+    } catch (err) {
+        // 2. Fallback to execCommand
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // Avoid scrolling to bottom
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) return true;
+            throw new Error('execCommand failed');
+        } catch (fallbackErr) {
+            console.error('Copy failed (both methods):', err, fallbackErr);
+            return false;
+        }
+    }
 }
 
 /**
  * モデルリストの生データをコピー
  */
-export function copyModelList() {
+export async function copyModelList() {
     if (!window.App.debug.lastModelList) { 
         if (window.showToast) window.showToast('コピーするデータがありません'); 
         return; 
     }
-    navigator.clipboard.writeText(JSON.stringify(window.App.debug.lastModelList, null, 2))
-        .then(() => window.showToast && window.showToast('モデルデータをコピーしました'))
-        .catch(() => window.showToast && window.showToast('コピー失敗'));
+    
+    const success = await copyToClipboard(JSON.stringify(window.App.debug.lastModelList, null, 2));
+    
+    if (success) {
+        if (window.showToast) window.showToast('モデルデータをコピーしました');
+    } else {
+        if (window.showToast) window.showToast('コピー失敗: セキュアコンテキスト(HTTPS/localhost)が必要です');
+    }
 }
 
 /**
@@ -250,7 +330,7 @@ export function recordApiCall(endpoint, method, request, response, error = null,
 /**
  * API通信履歴をクリップボードにコピー
  */
-export function copyApiHistory() {
+export async function copyApiHistory() {
     // ログを統合してソート（表示順に合わせる）
     const backendLogs = window.App.debug.lastBackendLogs || {};
     const notionLogs = (backendLogs.notion || []).map(e => ({...e, _type: 'notion'}));
@@ -265,15 +345,19 @@ export function copyApiHistory() {
             logs: allLogs
         }
     };
-    navigator.clipboard.writeText(JSON.stringify(debugData, null, 2))
-        .then(() => window.showToast && window.showToast('コピーしました'))
-        .catch(() => window.showToast && window.showToast('コピー失敗'));
+    
+    const success = await copyToClipboard(JSON.stringify(debugData, null, 2));
+    if (success) {
+        if (window.showToast) window.showToast('コピーしました');
+    } else {
+        if (window.showToast) window.showToast('コピー失敗');
+    }
 }
 
 /**
  * 個別のAPI通信エントリをコピー
  */
-export function copyApiEntry(index) {
+export async function copyApiEntry(index) {
     if (!window.App.debug.lastAllLogs || !window.App.debug.lastAllLogs[index]) {
         if (window.showToast) window.showToast('コピーするデータがありません');
         return;
@@ -282,9 +366,12 @@ export function copyApiEntry(index) {
     const entry = window.App.debug.lastAllLogs[index];
     const jsonString = JSON.stringify(entry, null, 2);
     
-    navigator.clipboard.writeText(jsonString)
-        .then(() => window.showToast && window.showToast('コピーしました'))
-        .catch(() => window.showToast && window.showToast('コピー失敗'));
+    const success = await copyToClipboard(jsonString);
+    if (success) {
+        if (window.showToast) window.showToast('コピーしました');
+    } else {
+        if (window.showToast) window.showToast('コピー失敗');
+    }
 }
 
 /**
@@ -304,10 +391,10 @@ export async function initializeDebugMode() {
         // デフォルトシステムプロンプトを更新
         if (data.default_system_prompt) {
             window.App.defaultPrompt = data.default_system_prompt;
-            if (window.App.debug.enabled) console.log('[CONFIG] App.defaultPrompt loaded from backend');
+            debugLog('[CONFIG] App.defaultPrompt loaded from backend');
         }
         
-        if (window.App.debug.enabled) console.log('[DEBUG_MODE] Server debug_mode:', window.App.debug.serverMode);
+        debugLog('[DEBUG_MODE] Server debug_mode:', window.App.debug.serverMode);
         
         // UI要素の表示制御
         updateDebugModeUI();
@@ -341,12 +428,8 @@ export function updateDebugModeUI() {
     // デバッグメニューの表示制御
     const debugInfoItem = document.getElementById('debugInfoMenuItem');
     if (debugInfoItem) {
-        if (window.App.debug.serverMode) {
-            debugInfoItem.style.display = '';
-        } else {
-            debugInfoItem.style.display = 'none';
-        }
+        debugInfoItem.style.display = window.App.debug.serverMode ? '' : 'none';
     }
     
-    if (window.App.debug.enabled) console.log('[DEBUG_MODE] UI updated. Model selection:', window.App.debug.serverMode ? 'enabled' : 'disabled');
+    debugLog('[DEBUG_MODE] UI updated. Model selection:', window.App.debug.serverMode ? 'enabled' : 'disabled');
 }

@@ -46,15 +46,10 @@ export function renderChatHistory() {
     const container = document.getElementById('chatHistory');
     container.innerHTML = '';
     
-    console.log('[renderChatHistory] Rendering', window.App.chat.history.length, 'messages');
+
     
     window.App.chat.history.forEach((entry, index) => {
-        console.log(`[renderChatHistory] Message ${index}:`, {
-            type: entry.type,
-            messageLength: entry.message?.length,
-            messagePreview: entry.message?.substring(0, 50),
-            hasModelInfo: !!entry.modelInfo
-        });
+
         
         // スタンプタイプは特別な表示（吹き出しなし、大きく表示）
         if (entry.type === 'stamp') {
@@ -70,10 +65,10 @@ export function renderChatHistory() {
         
         // メッセージ内容
         const processedMessage = entry.message.replace(/\n/g, '<br>');
-        console.log(`[renderChatHistory] Processed message ${index}:`, processedMessage.substring(0, 100));
+
         bubble.innerHTML = processedMessage;
         
-        console.log(`[renderChatHistory] Bubble innerHTML ${index}:`, bubble.innerHTML.substring(0, 100));
+
         
         // AIメッセージにプロパティカードを表示
         if (entry.type === 'ai' && entry.properties && Object.keys(entry.properties).length > 0) {
@@ -300,8 +295,9 @@ export async function sendStamp(emoji) {
     } catch (err) {
         hideAITypingIndicator();
         console.error('[sendStamp] Error:', err);
-        addChatMessage('ai', `❌ エラー: ${err.message}`);
-        recordApiCall('/api/chat', 'POST', { text: emoji }, null, err.message, null);
+        const errorMessage = /** @type {Error} */(err).message;
+        addChatMessage('ai', `❌ エラー: ${errorMessage}`);
+        recordApiCall('/api/chat', 'POST', { text: emoji }, null, errorMessage, null);
     }
 }
 
@@ -367,7 +363,8 @@ export async function handleAddFromBubble(entry) {
             const inputs = document.querySelectorAll('#propertiesForm .prop-input');
             
             // Collect properties from form inputs
-            inputs.forEach(/** @param {HTMLElement} input */ input => {
+            inputs.forEach(/** @param {Element} el */ el => {
+                const input = /** @type {HTMLElement} */(el);
                 const key = input.dataset?.key;
                 const type = input.dataset?.type;
                 
@@ -418,14 +415,15 @@ export async function handleAddFromBubble(entry) {
                 }
             }
             
-            
+            // Build payload (target_type and properties differ based on target type)
             const payload = {
                 target_db_id: window.App.target.id,
-                target_type: 'database',
+                target_type: window.App.target.type === 'database' ? 'database' : 'page',
                 text: content,
-                properties: properties
+                properties: window.App.target.type === 'database' ? properties : {}
             };
             
+            // Single unified fetch
             const res = await fetch('/api/save', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -438,37 +436,14 @@ export async function handleAddFromBubble(entry) {
                          res.status);
             
             if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
-            
-        } else {
-            // Page: save directly as content block
-            const payload = {
-                target_db_id: window.App.target.id,
-                target_type: 'page',
-                text: content,
-                properties: {} // Required by backend model
-            };
-            
-            const res = await fetch('/api/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-
-            
-            const data = await res.json().catch(() => ({}));
-            recordApiCall('/api/save', 'POST', payload, data,
-                         res.ok ? null : (data.detail || '保存に失敗しました'),
-                         res.status);
-            
-            if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
         }
         
         showToast('✅ Notionに追加しました');
         
     } catch(e) {
         console.error('[handleAddFromBubble] Error:', e);
-        showToast('エラー: ' + e.message);
-        recordApiCall('/api/save', 'POST', { content: content }, null, e.message, null);
+        const errorMessage = /** @type {Error} */(e).message;
+        showToast('エラー: ' + errorMessage);
     } finally {
         setLoading(false);
     }
@@ -652,12 +627,13 @@ export async function handleChatAI(inputText = null) {
     } catch(e) {
         console.error('[handleChatAI] Error:', e);
         hideAITypingIndicator();
+        const errorMessage = /** @type {Error} */(e).message;
         
-        recordApiCall('/api/chat', 'POST', { text: text, target_id: window.App.target.id }, null, e.message, null);
+        recordApiCall('/api/chat', 'POST', { text: text, target_id: window.App.target.id }, null, errorMessage, null);
         
-        updateState('❌', 'Error', { error: e.message });
-        addChatMessage('system', "エラー: " + e.message);
-        showToast("エラー: " + e.message);
+        updateState('❌', 'Error', { error: errorMessage });
+        addChatMessage('system', "エラー: " + errorMessage);
+        showToast("エラー: " + errorMessage);
     }
 }
 

@@ -102,6 +102,54 @@ class TestGenerateJson:
 
             assert "AI generation failed" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    async def test_generate_json_skips_response_format_for_unsupported_models(self):
+        """
+        supports_response_schema=False のモデルでは response_format を渡さないこと
+        """
+        from api.llm_client import generate_json
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"result": "ok"}'
+        mock_response.usage = MagicMock()
+        mock_response.usage.model_dump.return_value = {}
+
+        with patch("api.llm_client.supports_response_schema", return_value=False):
+            with patch("api.llm_client.acompletion", new_callable=AsyncMock) as mock_ac:
+                mock_ac.return_value = mock_response
+                with patch("api.llm_client.completion_cost", return_value=0.0):
+                    await generate_json("test", "gemini/gemini-2.5-flash-image")
+
+                # acompletion が response_format なしで呼ばれたことを確認
+                call_kwargs = mock_ac.call_args.kwargs
+                assert "response_format" not in call_kwargs
+                assert call_kwargs["drop_params"] is True
+
+    @pytest.mark.asyncio
+    async def test_generate_json_includes_response_format_for_supported_models(self):
+        """
+        supports_response_schema=True のモデルでは response_format を渡すこと
+        """
+        from api.llm_client import generate_json
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"result": "ok"}'
+        mock_response.usage = MagicMock()
+        mock_response.usage.model_dump.return_value = {}
+
+        with patch("api.llm_client.supports_response_schema", return_value=True):
+            with patch("api.llm_client.acompletion", new_callable=AsyncMock) as mock_ac:
+                mock_ac.return_value = mock_response
+                with patch("api.llm_client.completion_cost", return_value=0.0):
+                    await generate_json("test", "gemini/gemini-2.5-flash")
+
+                # acompletion が response_format 付きで呼ばれたことを確認
+                call_kwargs = mock_ac.call_args.kwargs
+                assert call_kwargs["response_format"] == {"type": "json_object"}
+                assert call_kwargs["drop_params"] is True
+
 
 class TestPrepareMultimodalPrompt:
     """prepare_multimodal_prompt 関数のテスト"""

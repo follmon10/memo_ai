@@ -9,9 +9,15 @@
 ### Do
 - Pydantic モデルを使用してリクエスト/レスポンスを型定義する
 - `api/config.py` から環境変数を読み込む（直接 `os.getenv()` しない）
-- 構造化ログを使用（`api/logger.py` 経由）
+- 構造化ログを使用（`api/logger.py` 経由）— **`print()` ではなく `logger.info()`/`logger.debug()` を使用**
 - 非同期処理には `async`/`await` を使用する
 - テストには `pytest` + モック (`unittest.mock`) を使用する
+
+### Code Quality
+- **デッドコード削除**: 関数の使用箇所を `grep_search` で全ファイル検索→0件なら削除。テスト専用関数は本番コードに不要
+- **DRY原則**: 同一ロジックが3回以上出現→ヘルパー関数に抽出（例: `_format_schema_for_prompt()`, `extract_property_value()`）
+- **ヘルパー関数命名**: 内部用は`_`接頭辞（例: `_format_schema_for_prompt()`）、外部公開は通常命名
+- **関数の責務**: 1関数50行超→責務を分割検討。重複コードは即座にヘルパー化
 
 ### Don't
 - `api/index.py` に新しいエンドポイントを追加しない → `api/endpoints.py` に追加する
@@ -34,7 +40,8 @@
 | `test_critical_paths.py` | 統合フロー |
 | `test_regression_schemas.py` | スキーマ整合性 |
 | `test_rate_limiter.py` | レート制限機能 |
-| `test_llm_client.py` | LLM API連携・リトライ |
+| `test_llm_client.py` | LLM API連携・リトライ・JSON mode互換性 (7テスト) |
+| `test_json_mode_integration.py` | JSON mode E2Eテスト (3テスト) |
 | `test_ai_internal.py` | プロンプト構築・JSON修復 |
 | `test_model_discovery.py` | モデル検出・キャッシュ |
 | `test_html_js_consistency.py` | HTML/JSセレクター整合性 |

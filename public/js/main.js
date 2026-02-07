@@ -3,7 +3,7 @@
 import { 
     openDebugModal, closeDebugModal, loadDebugInfo, 
     initializeDebugMode, updateDebugModeUI, 
-    recordApiCall, copyApiHistory, copyApiEntry 
+    recordApiCall, copyApiHistory, copyApiEntry, debugLog 
 } from './debug.js';
 
 import { 
@@ -108,7 +108,9 @@ const App = {
         current: null,      // Currently selected model ID
         tempSelected: null, // Temporary selection in modal
         showAllModels: false, // UI toggle state
-        sessionCost: 0      // Session running cost
+        sessionCost: 0,      // Session running cost
+        textAvailability: null,      // Availability of default text model
+        multimodalAvailability: null // Availability of default multimodal model
     },
     
     debug: {
@@ -117,16 +119,13 @@ const App = {
         showModelInfo: true, // Show model info in chat bubbles
         apiHistory: [],      // 直近10件のAPI通信履歴
         lastBackendLogs: null,  // サーバーから取得したバックエンドログ
-        lastModelList: null  // For debugging model list
+        lastModelList: null,  // For debugging model list
+        lastAllLogs: null
     },
     
-    defaultPrompt: `あなたは優秀な秘書です。
-ユーザーの入力を元に、Notionに保存するための整理されたドキュメントを作成してください。
-以下のルールに従ってください：
-1. ユーザーの意図を汲み取り、適切なタイトルと本文を構成する
-2. 重要な情報は箇条書きなどを活用して見やすくする
-3. タスクが含まれる場合は、ToDoリスト形式にする
-4. 丁寧な日本語で出力する`
+    // バックエンドから取得するため、初期値は空文字列
+    // debug.js の initializeDebugMode() で /api/config から取得される
+    defaultPrompt: ''
 };
 
 // グローバルに公開（モジュール間共有のため）
@@ -137,14 +136,36 @@ window.App = App;
 
 // --- Utility Functions ---
 
-function debugLog(...args) {
-    if (App.debug.enabled) {
-        console.log('[DEBUG]', ...args);
-    }
-}
+// Debug logging is now imported from debug.js
 
-// グローバル公開
-window.debugLog = debugLog;
+/**
+ * Centralized Save API Caller
+ * Handles fetch, error parsing, debug recording, and user feedback.
+ *
+ * @param {Object} payload - Request body for /api/save
+ * @param {{ success: string, failure: string }} messages - Toast messages
+ * @returns {Promise<Object>} - Parsed response data
+ * @throws {Error} - On HTTP error or network failure
+ */
+async function performSaveRequest(payload, messages) {
+    const res = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    
+    if (!res.ok) {
+        const errorText = await res.text();
+        recordApiCall('/api/save', 'POST', payload, null, errorText, res.status);
+        throw new Error(errorText);
+    }
+    
+    const data = await res.json();
+    recordApiCall('/api/save', 'POST', payload, data, null, res.status);
+    updateSaveStatus(`✅ ${messages.success}`);
+    showToast(messages.success);
+    return data;
+}
 
 function updateStatusArea() {
     const loading = document.getElementById('loadingIndicator');
@@ -211,7 +232,7 @@ function updateState(icon, message, details = null) {
     
     // UI要素がない場合はログ出力のみ
     if (!stateDisplay || !stateIcon || !stateText) {
-        console.log(`[State] ${icon} ${message}`, details);
+
         return;
     }
     
@@ -224,7 +245,7 @@ function updateState(icon, message, details = null) {
         stateDetailsContent.textContent = JSON.stringify(details, null, 2);
     }
     
-    console.log(`[State] ${icon} ${message}`, details);
+
     
     // Auto-hide after 3 seconds if this is a completion state (✅ or ❌)
     if (icon === '✅' || icon === '❌') {
@@ -338,7 +359,7 @@ async function loadTargets(forceRefresh = false) {
         if (forceRefresh) {
             // 強制更新：キャッシュをバイパスしてAPIから直接取得
             localStorage.removeItem(App.cache.KEYS.TARGETS);
-            console.log('[loadTargets] Force refresh - fetching from API');
+
             const res = await fetch('/api/targets');
             if (!res.ok) {
                 recordApiCall('/api/targets', 'GET', null, null, `HTTP ${res.status}`, res.status);
@@ -351,7 +372,7 @@ async function loadTargets(forceRefresh = false) {
                 timestamp: Date.now(),
                 data: data
             }));
-            console.log('[loadTargets] Fetched', data.targets.length, 'targets');
+
         } else {
             data = await fetchWithCache(
                 '/api/targets', 
@@ -458,6 +479,10 @@ function renderTargetOptions(targets) {
     }
 }
 
+/**
+ * @param {boolean | Event} [skipRefreshOrEvent]
+ * @returns {Promise<void>}
+ */
 async function handleTargetChange(skipRefreshOrEvent = false) {
     
     /** @type {HTMLSelectElement | null} */
@@ -515,20 +540,14 @@ async function handleTargetChange(skipRefreshOrEvent = false) {
         
         // スキーマ取得
         try {
-            console.log('[DEBUG] Fetching schema for:', targetId);
             const res = await fetch(`/api/schema/${targetId}`);
-            console.log('[DEBUG] Schema response status:', res.status, res.ok);
             if (res.ok) {
                 const data = await res.json();
                 recordApiCall(`/api/schema/${targetId}`, 'GET', null, data, null, res.status);
-                console.log('[DEBUG] Schema API response:', data);
-                console.log('[DEBUG] Schema data:', data.schema);
                 App.target.schema = data.schema;
-                console.log('[DEBUG] formContainer exists:', !!formContainer);
                 if (formContainer) renderDynamicForm(formContainer, data.schema);
             } else {
                 recordApiCall(`/api/schema/${targetId}`, 'GET', null, null, `HTTP ${res.status}`, res.status);
-                console.error('[DEBUG] Schema fetch failed with status:', res.status);
             }
         } catch (e) {
             console.error('Schema fetch error:', e);
@@ -574,9 +593,7 @@ window.fetchAndTruncatePageContent = fetchAndTruncatePageContent;
 // --- Form & Input Logic ---
 
 function renderDynamicForm(container, schema) {
-    console.log('[DEBUG] renderDynamicForm called');
-    console.log('[DEBUG] container:', container);
-    console.log('[DEBUG] schema:', schema);
+
     
     if (!container) {
         console.error('[DEBUG] No container element found!');
@@ -586,7 +603,7 @@ function renderDynamicForm(container, schema) {
     
     // **重要**: 逆順で表示 (Reverse Order)
     const entries = Object.entries(schema).reverse();
-    console.log('[DEBUG] Schema entries count:', entries.length);
+
     
     for (const [key, prop] of entries) {
         // Notionが自動管理するシステムプロパティは編集不要なのでスキップ
@@ -697,7 +714,8 @@ async function saveToDatabase() {
     const properties = {};
     const inputs = document.querySelectorAll('#propertiesForm .prop-input');
     
-    inputs.forEach(/** @param {HTMLElement} input */ input => {
+    inputs.forEach(/** @param {Element} el */ el => {
+        const input = /** @type {HTMLElement} */(el);
         const key = input.dataset?.key;
         const type = input.dataset?.type;
         
@@ -733,26 +751,18 @@ async function saveToDatabase() {
     };
     
     try {
-        const res = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+        await performSaveRequest(body, { 
+            success: '保存しました', 
+            failure: '保存失敗' 
         });
-        
-        if (!res.ok) throw new Error(await res.text());
-        
-        const data = await res.json();
-        recordApiCall('/api/save', 'POST', body, data, null, res.status);
-        
-        updateSaveStatus(' 保存しました！');
-        showToast('保存しました');
         
         // クリア
         memoInput.value = '';
         clearPreviewImage();
         
         // フォームリセット
-        inputs.forEach(/** @param {HTMLElement} input */ input => {
+        inputs.forEach(/** @param {Element} el */ el => {
+             const input = /** @type {HTMLElement} */(el);
              if (/** @type {HTMLInputElement} */(input).type === 'checkbox') /** @type {HTMLInputElement} */(input).checked = false;
              else if (input.tagName === 'SELECT') /** @type {HTMLSelectElement} */(input).selectedIndex = -1;
              else /** @type {HTMLInputElement} */(input).value = '';
@@ -760,9 +770,8 @@ async function saveToDatabase() {
         
     } catch (e) {
         console.error('Save error', e);
-        updateSaveStatus(' 保存失敗');
-        showToast(`エラー: ${e.message}`);
-        recordApiCall('/api/save', 'POST', body, null, e.message, null);
+        updateSaveStatus('❌ 保存失敗');
+        showToast(`エラー: ${/** @type {Error} */(e).message}`);
     } finally {
         setLoading(false);
     }
@@ -789,33 +798,16 @@ async function saveToPage() {
     };
     
     try {
-        // Pageへの追記は別のエンドポイントまたは同じエンドポイントで分岐
-        // ここでは便宜上 /api/save を拡張して利用すると想定、または /api/append
-        // 現在の実装に合わせて /api/save を使用（バックエンドが対応している前提）
-        // バックエンド側で page_id がある場合は追記モードになる
-        
-        const res = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+        await performSaveRequest(body, {
+            success: 'ページに追記しました',
+            failure: '追記失敗'
         });
-        
-        if (!res.ok) throw new Error(await res.text());
-        
-        const data = await res.json();
-        recordApiCall('/api/save', 'POST', body, data, null, res.status);
-        
-        updateSaveStatus('✅ 追記しました！');
-        showToast('ページに追記しました');
         
         memoInput.value = '';
         clearPreviewImage();
         
     } catch (e) {
         console.error('Append error', e);
-        updateSaveStatus(' 追記失敗');
-        showToast(`エラー: ${e.message}`);
-        recordApiCall('/api/save', 'POST', body, null, e.message, null);
     } finally {
         setLoading(false);
     }
@@ -946,7 +938,8 @@ async function createNewPage(title) {
         }
         
     } catch(e) {
-        showToast(`作成失敗: ${e.message}`);
+        const errorMessage = /** @type {Error} */(e).message;
+        showToast(`作成失敗: ${errorMessage}`);
     } finally {
         setLoading(false);
     }
@@ -1075,17 +1068,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Models
     loadAvailableModels();
     
-    // Session Clear Button
-    const sessionClearBtn = document.getElementById('sessionClearBtn');
-    if (sessionClearBtn) {
-        sessionClearBtn.addEventListener('click', handleSessionClear);
-    }
-    
-    // View Content Button
-    const viewContentBtn = document.getElementById('viewContentBtn');
-    if (viewContentBtn) {
-        viewContentBtn.addEventListener('click', openContentModal);
-    }
 });
 
 // UI Event Handlers defined in HTML (onclick) need to be globablly accessible
@@ -1104,7 +1086,8 @@ function fillForm(properties) {
     // Original implementation looked for inputs directly
     const inputs = document.querySelectorAll('#propertiesForm .prop-input');
     
-    inputs.forEach(/** @param {HTMLElement} input */ input => {
+    inputs.forEach(/** @param {Element} el */ el => {
+        const input = /** @type {HTMLElement} */(el);
         const key = input.dataset?.key;
         const type = input.dataset?.type;
         const value = properties[key];

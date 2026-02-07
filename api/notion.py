@@ -113,13 +113,14 @@ async def safe_api_call(
                 )
                 return result
 
-        except httpx.ReadTimeout as e:
-            error_msg = f"ReadTimeout: {str(e)}"
+        except (httpx.ReadTimeout, httpx.NetworkError) as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
             if attempt < max_retries - 1:
                 # 指数バックオフ: 1秒, 2秒, 4秒... と待機時間を倍にしていく
                 backoff = 2**attempt
                 logger.warning(
-                    "Timeout on %s, retry %d/%d after %ds",
+                    "%s on %s, retry %d/%d after %ds",
+                    type(e).__name__,
                     endpoint,
                     attempt + 1,
                     max_retries,
@@ -128,37 +129,10 @@ async def safe_api_call(
                 await asyncio.sleep(backoff)
             else:
                 logger.error(
-                    "Final timeout on %s after %d attempts", endpoint, max_retries
-                )
-                _record_notion_log(
-                    method,
-                    endpoint,
-                    None,
-                    time.time() - start_time,
-                    attempt,
-                    error_msg,
-                    None,
-                )
-                raise
-
-        except httpx.NetworkError as e:
-            error_msg = f"NetworkError: {str(e)}"
-            if attempt < max_retries - 1:
-                backoff = 2**attempt
-                logger.warning(
-                    "Network error on %s, retry %d/%d after %ds",
-                    endpoint,
-                    attempt + 1,
-                    max_retries,
-                    backoff,
-                )
-                await asyncio.sleep(backoff)
-            else:
-                logger.error(
-                    "Network error on %s after %d attempts: %s",
+                    "%s on %s after %d attempts",
+                    type(e).__name__,
                     endpoint,
                     max_retries,
-                    e,
                 )
                 _record_notion_log(
                     method,
@@ -307,11 +281,7 @@ async def fetch_recent_pages(target_db_id: str, limit: int = 3) -> List[Dict[str
     response = await safe_api_call("POST", f"databases/{target_db_id}/query", json=body)
     if not response:
         return []
-
-    results = []
-    for page in response.get("results", []):
-        results.append(page)
-    return results
+    return response.get("results", [])
 
 
 async def create_page(

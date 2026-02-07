@@ -113,6 +113,7 @@ interface Window {
             apiHistory: any[];
             lastBackendLogs: any;
             lastModelList: any;
+            lastAllLogs: any;
         };
         defaultPrompt: string;
     };

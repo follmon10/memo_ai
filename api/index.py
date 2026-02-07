@@ -291,20 +291,7 @@ app.add_middleware(
 )
 
 # --- Endpoints Router Include ---
-# System系エンドポイントをendpoints.pyに分離
-# (Included at top of file)
-
-# endponts.pyへのrate_limiter注入は不要になりました（直接importに変更）
-
 app.include_router(endpoints_router)
-
-
-# --- ヘルパー関数 (Helper Functions) ---
-# services.py から import
-
-
-# --- Pydanticモデル定義 (データバリデーション用) ---
-# schemas.py から import
 
 
 # --- Endpoints ---
@@ -327,18 +314,6 @@ if os.environ.get("VERCEL"):
         from fastapi.responses import RedirectResponse
 
         return RedirectResponse(url="/index.html")
-
-
-# --- System系エンドポイントはendpoints.pyに移行済み ---
-#
-# @app.get("/api/health")
-# def health_check():
-#     """
-#     ヘルスチェック用エンドポイント
-#
-#     サーバーが正常に稼働しているかを確認するために監視サービス等から叩かれます。
-#     """
-#     return {"status": "ok"}
 
 
 # Debug endpoint (development only) - guarded by DEBUG_MODE
@@ -482,14 +457,6 @@ if DEBUG_MODE:
         }
 
     # End of DEBUG_MODE section
-
-
-# --- すべてのAPIエンドポイントはendpoints.pyに移行済み ---
-# System系、Notion参照系、AI系、Update系の全エンドポイントは api/endpoints.py に統合されています
-
-
-# --- ページ更新エンドポイント（endpoints.pyに移行済み） ---
-# update_page → api/endpoints.py
 
 
 # --- 静的ファイルの配信設定 ---

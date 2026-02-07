@@ -148,6 +148,53 @@ with patch("api.endpoints.fetch_children_list", ...):
 
 ---
 
+## LLM JSON Mode 互換性
+
+### 問題: `"JSON mode is not enabled for this model"` エラー
+
+**症状**: 画像生成モデル (`gemini-2.5-flash-image` 等) で JSON mode エラーが発生
+
+**根本原因**: 画像生成モデルは JSON 構造化出力をサポートしていない
+
+**解決策 (実装済み)**:
+
+システムは **3層防御** で自動的にJSON mode対応を判定します:
+
+#### Layer 1: Runtime Check (`llm_client.py`)
+```python
+# litellm公式APIで呼び出し時に自動チェック
+model_supports_json = supports_response_schema(model=model)
+if model_supports_json:
+    extra_kwargs["response_format"] = {"type": "json_object"}
+```
+
+#### Layer 2: Name Heuristic (`model_discovery.py`)
+```python
+# モデル名から画像生成モデルを検出
+is_image_generation = "image" in model_name.lower()
+# メタデータに正確な情報を設定
+"supports_json": not is_image_generation
+```
+
+#### Layer 3: Mode Override (`models.py`)
+```python
+# litellm の mode フィールドで二重チェック
+if cost_info.get("mode") == "image_generation":
+    gemini_model["supports_json"] = False
+```
+
+**検証コマンド**:
+```python
+import litellm
+print(litellm.supports_response_schema("gemini/gemini-2.5-flash-image"))  # False
+print(litellm.supports_response_schema("gemini/gemini-2.5-flash"))        # True
+```
+
+**参考**: [Implementation Plan](file:///C:/Users/kibit/.gemini/antigravity/brain/45678ccb-4375-487b-bf83-234a54dba3e2/implementation_plan.md) | [Walkthrough](file:///C:/Users/kibit/.gemini/antigravity/brain/45678ccb-4375-487b-bf83-234a54dba3e2/walkthrough.md)
+
+
+---
+
 ## UI/CSS のレグレッション予防
 
 **症状**: 一箇所のスタイル修正が、別の場所のレイアウトを崩す

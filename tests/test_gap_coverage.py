@@ -5,7 +5,7 @@ implementation_plan.mdとの照合で見つかった欠落テストを補完し�
 """
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 import httpx
 
 
@@ -18,9 +18,8 @@ async def test_schema_error_handling_invalid_id(client):
     無効なIDで404エラーが返り、database_errorとpage_errorの両方が含まれること
     """
     from api.endpoints import get_schema
+    from unittest.mock import MagicMock
     from fastapi import Request
-
-    mock_request = MagicMock(spec=Request)
 
     # rate_limiterをモック
     with patch("api.endpoints.rate_limiter.check_rate_limit", new_callable=AsyncMock):
@@ -29,6 +28,7 @@ async def test_schema_error_handling_invalid_id(client):
             "api.endpoints.get_db_schema", side_effect=ValueError("Not a database")
         ):
             with patch("api.endpoints.get_page_info", return_value=None):
+                mock_request = MagicMock(spec=Request)
                 with pytest.raises(Exception) as exc_info:
                     await get_schema("invalid-id-123", mock_request)
 
@@ -94,10 +94,6 @@ async def test_targets_no_root_page_error(client):
         del os.environ["NOTION_ROOT_PAGE_ID"]
 
     try:
-        from fastapi import Request
-
-        mock_request = MagicMock(spec=Request)
-
         with patch(
             "api.endpoints.rate_limiter.check_rate_limit", new_callable=AsyncMock
         ):

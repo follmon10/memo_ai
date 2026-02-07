@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from collections import deque
 from typing import Dict, Any
-from litellm import acompletion, completion_cost
+from litellm import acompletion, completion_cost, supports_response_schema
 import litellm
 
 from api.config import LITELLM_VERBOSE, LITELLM_TIMEOUT, LITELLM_MAX_RETRIES
@@ -113,12 +113,32 @@ async def generate_json(prompt: Any, model: str, retries: int = None) -> Dict[st
                 messages = [{"role": "user", "content": prompt}]
 
             # LiteLLM呼び出し (非同期)
-            # response_format={"type": "json_object"} によりJSON出力を強制します
+            # ベストプラクティス: litellm公式APIでJSONモード対応を事前確認
+            # supports_response_schema() は model_cost メタデータより正確
+            try:
+                model_supports_json = supports_response_schema(
+                    model=model, custom_llm_provider=None
+                )
+            except Exception as e:
+                # API確認失敗時はJSONモードを試行（既存の挙動を維持）
+                logger.warning("Could not check JSON support for '%s': %s", model, e)
+                model_supports_json = True
+
+            extra_kwargs = {}
+            if model_supports_json:
+                extra_kwargs["response_format"] = {"type": "json_object"}
+            else:
+                logger.info(
+                    "⚠️ Model '%s' does not support JSON mode, using prompt-based JSON guidance",
+                    model,
+                )
+
             response = await acompletion(
                 model=model,
                 messages=messages,
-                response_format={"type": "json_object"},
                 timeout=LITELLM_TIMEOUT,
+                drop_params=True,  # Defense-in-depth: 未サポートパラメータを自動除外
+                **extra_kwargs,
             )
 
             # コンテンツの抽出

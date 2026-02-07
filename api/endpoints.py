@@ -9,6 +9,11 @@ System系およびNotion参照系エンドポイントを定義します。
 from fastapi import APIRouter, HTTPException, Request
 import os
 import asyncio
+import traceback
+
+from api.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # グローバル変数（index.pyから参照）
 from api.config import (
@@ -40,7 +45,7 @@ from api.rate_limiter import rate_limiter
 router = APIRouter()
 
 
-# ===== System系エンドポイント =====
+# ===== System Endpoints =====
 
 
 @router.get("/api/health")
@@ -108,6 +113,14 @@ async def get_models(all: bool = False):
         text_only = get_text_models()
         vision_capable = get_vision_models()
 
+        # デフォルトモデルの可用性チェック
+        from api.models import check_default_model_availability
+
+        text_availability = check_default_model_availability(DEFAULT_TEXT_MODEL)
+        multimodal_availability = check_default_model_availability(
+            DEFAULT_MULTIMODAL_MODEL
+        )
+
         return {
             "all": all_models,
             "text_only": text_only,
@@ -115,6 +128,8 @@ async def get_models(all: bool = False):
             "defaults": {
                 "text": DEFAULT_TEXT_MODEL,
                 "multimodal": DEFAULT_MULTIMODAL_MODEL,
+                "text_availability": text_availability,
+                "multimodal_availability": multimodal_availability,
             },
         }
     except Exception as e:
@@ -221,7 +236,6 @@ async def get_schema(target_id: str, request: Request):
         db_error = str(e)
     except Exception as e:
         db_error = str(e)
-        print(f"[Schema Fetch] Database fetch error: {e}")
 
     try:
         page = await get_page_info(target_id)
@@ -237,9 +251,7 @@ async def get_schema(target_id: str, request: Request):
             page_error = f"Target {target_id} not found as Page (returned None)"
     except Exception as e:
         page_error = str(e)
-        print(f"[Schema Fetch] Page fetch error: {e}")
 
-    print(f"[Schema Fetch] Both database and page fetch failed for {target_id}")
     raise HTTPException(
         status_code=404,
         detail={
@@ -277,7 +289,7 @@ async def get_content(page_id: str, request: Request, type: str = "page"):
     try:
         if type == "database":
             # データベースの場合：最近のエントリを取得してフォーマット
-            print(f"[Content] Fetching database entries for: {page_id}")
+
             entries = await query_database(page_id, limit=20)
 
             if not entries:
@@ -325,12 +337,12 @@ async def get_content(page_id: str, request: Request, type: str = "page"):
                 lines.append("")  # 空行
 
             content_text = "\n".join(lines)
-            print(f"[Content] Database content length: {len(content_text)} chars")
+
             return {"content": content_text}
 
         else:
             # ページの場合：ブロック内容を取得してテキスト化
-            print(f"[Content] Fetching page blocks for: {page_id}")
+
             blocks = await fetch_children_list(page_id, limit=100)
 
             if not blocks:
@@ -398,23 +410,19 @@ async def get_content(page_id: str, request: Request, type: str = "page"):
                         lines.append(f"```{language}\n{text}\n```")
 
             content_text = "\n".join(lines)
-            print(
-                f"[Content] Page content length: {len(content_text)} chars, blocks: {len(blocks)}"
-            )
+
             return {"content": content_text}
 
     except Exception as e:
-        print(f"[Content Error] {type(e).__name__}: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("[Content Error] %s: %s", type(e).__name__, e)
+        logger.debug(traceback.format_exc())
 
         # エラー時は空のコンテンツを返して処理を続行
         # （参照コンテキストがなくてもチャットは機能すべき）
         return {"content": f"コンテンツの取得中にエラーが発生しました: {str(e)}"}
 
 
-# --- AI系エンドポイント (Step 3) ---
+# --- AI Endpoints ---
 
 
 @router.post("/api/analyze")
@@ -446,14 +454,14 @@ async def analyze_endpoint(request: Request, analyze_req: AnalyzeRequest):
         recent_examples = results[1]
 
         if isinstance(schema, Exception):
-            print(f"Error fetching schema: {schema}")
+            logger.warning("Error fetching schema: %s", schema)
             schema = {}
         if isinstance(recent_examples, Exception):
-            print(f"Error fetching recent examples: {recent_examples}")
+            logger.warning("Error fetching recent examples: %s", recent_examples)
             recent_examples = []
 
     except Exception as e:
-        print(f"Parallel fetch failed: {e}")
+        logger.warning("Parallel fetch failed: %s", e)
         schema = {}
         recent_examples = []
 
@@ -488,10 +496,8 @@ async def analyze_endpoint(request: Request, analyze_req: AnalyzeRequest):
             },
         )
     except Exception as e:
-        print(f"[AI Analysis Error] {type(e).__name__}: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("[AI Analysis Error] %s: %s", type(e).__name__, e)
+        logger.debug(traceback.format_exc())
 
         detail = {"error": "AI analysis failed"}
         if DEBUG_MODE:
@@ -520,23 +526,16 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
 
     await rate_limiter.check_rate_limit(request, endpoint="chat")
 
-    print(f"[Chat] Request received for target: {chat_req.target_id}")
-    print(f"[Chat] Has image: {bool(chat_req.image_data)}")
-    print(f"[Chat] Text length: {len(chat_req.text) if chat_req.text else 0}")
-
     try:
         target_id = chat_req.target_id
 
-        print(f"[Chat] Fetching schema for target: {target_id}")
         try:
             schema_result = await get_schema(target_id, request)
             schema = schema_result.get("schema", {})
             target_type = schema_result.get("type", "database")
-            print(
-                f"[Chat] Schema fetched, type: {target_type}, properties: {len(schema)}"
-            )
+
         except Exception as schema_error:
-            print(f"[Chat] Schema fetch error: {schema_error}")
+            logger.warning("[Chat] Schema fetch error: %s", schema_error)
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -562,7 +561,6 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
                 {"role": "system", "content": chat_req.reference_context}
             ] + session_history
 
-        print(f"[Chat] Calling AI with model: {chat_req.model or 'auto'}")
         try:
             result = await chat_analyze_text_with_ai(
                 text=chat_req.text,
@@ -573,7 +571,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
                 image_mime_type=chat_req.image_mime_type,
                 model=chat_req.model,
             )
-            print(f"[Chat] AI response received, model used: {result.get('model')}")
+
             return result
         except httpx.ReadTimeout:
             raise HTTPException(
@@ -585,10 +583,8 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
                 },
             )
         except Exception as ai_error:
-            print(f"[Chat AI Error] {type(ai_error).__name__}: {ai_error}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error("[Chat AI Error] %s: %s", type(ai_error).__name__, ai_error)
+            logger.debug(traceback.format_exc())
 
             detail = {"error": "Chat AI failed"}
             if DEBUG_MODE:
@@ -601,10 +597,8 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[Chat Endpoint Error] {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("[Chat Endpoint Error] %s", e)
+        logger.debug(traceback.format_exc())
 
         detail = {"error": "Unexpected error"}
         if DEBUG_MODE:
@@ -627,10 +621,16 @@ async def save_endpoint(save_req: SaveRequest):
     ページへの追記（ブロック追加）と、データベースへの新規アイテム作成の両方に対応しています。
     """
     from api.notion import append_block, create_page
-    from api.services import sanitize_image_data
+    from api.services import (
+        sanitize_image_data,
+        sanitize_notion_properties,
+        ensure_title_property,
+        create_content_blocks,
+    )
 
     try:
         if save_req.target_type == "page":
+            # Page: テキスト追記
             content = save_req.text or "No content"
             if "Content" in save_req.properties:
                 c_obj = save_req.properties["Content"]
@@ -638,116 +638,24 @@ async def save_endpoint(save_req: SaveRequest):
                     content = c_obj["rich_text"][0]["text"]["content"]
 
             content = sanitize_image_data(content)
-
             if len(content) > NOTION_CONTENT_MAX_LENGTH:
-                print(
-                    f"[Save] Warning: Extremely large content ({len(content)} chars). Truncating."
+                logger.warning(
+                    "[Save] Content too large (%d chars). Truncating.", len(content)
                 )
                 content = content[:10000] + "\n...(Truncated)..."
 
             await append_block(save_req.target_db_id, content)
             return {"status": "success", "url": ""}
         else:
-            sanitized_props = save_req.properties.copy()
+            # Database: 新規ページ作成
+            props = sanitize_notion_properties(save_req.properties)
+            props = ensure_title_property(props, save_req.text)
+            children = create_content_blocks(save_req.text)
 
-            def sanitize_val(val):
-                if isinstance(val, str):
-                    return sanitize_image_data(val)
-                return val
-
-            for key, val in sanitized_props.items():
-                if isinstance(val, dict):
-                    if "rich_text" in val and val["rich_text"]:
-                        new_rich_text = []
-                        for item in val["rich_text"]:
-                            if "text" in item:
-                                content = sanitize_val(item["text"]["content"])
-                                if len(content) > NOTION_BLOCK_CHAR_LIMIT:
-                                    for i in range(
-                                        0, len(content), NOTION_BLOCK_CHAR_LIMIT
-                                    ):
-                                        new_item = item.copy()
-                                        new_item["text"] = item["text"].copy()
-                                        new_item["text"]["content"] = content[
-                                            i : i + NOTION_BLOCK_CHAR_LIMIT
-                                        ]
-                                        new_rich_text.append(new_item)
-                                else:
-                                    item["text"]["content"] = content
-                                    new_rich_text.append(item)
-                            else:
-                                new_rich_text.append(item)
-                        val["rich_text"] = new_rich_text
-
-                    if "title" in val and val["title"]:
-                        new_title = []
-                        for item in val["title"]:
-                            if "text" in item:
-                                content = sanitize_val(item["text"]["content"])
-                                if len(content) > NOTION_BLOCK_CHAR_LIMIT:
-                                    for i in range(
-                                        0, len(content), NOTION_BLOCK_CHAR_LIMIT
-                                    ):
-                                        new_item = item.copy()
-                                        new_item["text"] = item["text"].copy()
-                                        new_item["text"]["content"] = content[
-                                            i : i + NOTION_BLOCK_CHAR_LIMIT
-                                        ]
-                                        new_title.append(new_item)
-                                else:
-                                    item["text"]["content"] = content
-                                    new_title.append(item)
-                            else:
-                                new_title.append(item)
-                        val["title"] = new_title
-
-            # --- Title Auto-generation Logic ---
-            # Check if title property exists in sanitized_props
-            has_title = False
-            for key, val in sanitized_props.items():
-                if "title" in val:
-                    has_title = True
-                    break
-
-            # If no title provided, try to generate one from content
-            if not has_title:
-                content_text = save_req.text or "Untitled"
-                # Generate a safe title (truncated to 100 chars, first line)
-                safe_title = (
-                    content_text.split("\n")[0][:100] if content_text else "Untitled"
-                )
-                # Use a generic key "Name" or "Title" if we can't determine the schema's title key
-                # Ideally, the frontend should send the correct key, but this is a fallback
-                sanitized_props["Name"] = {"title": [{"text": {"content": safe_title}}]}
-                print(f"[Save] Auto-generated title: {safe_title}")
-
-            # --- Content Block Creation ---
-            children = []
-            if save_req.text:
-                # Simple paragraph block for the content
-                # Split extremely large content if necessary, though blocks have a 2000 char limit
-                # Here we keep it simple assuming reasonable length or future splitting logic
-                content_chunks = [
-                    save_req.text[i : i + 2000]
-                    for i in range(0, len(save_req.text), 2000)
-                ]
-                for chunk in content_chunks:
-                    children.append(
-                        {
-                            "object": "block",
-                            "type": "paragraph",
-                            "paragraph": {
-                                "rich_text": [
-                                    {"type": "text", "text": {"content": chunk}}
-                                ]
-                            },
-                        }
-                    )
-
-            url = await create_page(save_req.target_db_id, sanitized_props, children)
+            url = await create_page(save_req.target_db_id, props, children)
             return {"status": "success", "url": url}
     except Exception as e:
-        print(f"[Save Error] {e}")
+        logger.error("[Save Error] %s", e)
         raise HTTPException(
             status_code=500, detail=f"Failed to save to Notion: {str(e)}"
         )
@@ -797,10 +705,8 @@ async def update_page(page_id: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[Update Page Error] {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("[Update Page Error] %s", e)
+        logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"ページ更新エラー: {str(e)}")
 
 
@@ -842,10 +748,8 @@ async def create_page_endpoint(request: dict):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[Create Page Error] {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("[Create Page Error] %s", e)
+        logger.debug(traceback.format_exc())
         raise HTTPException(
             status_code=500, detail=f"ページ作成に失敗しました: {str(e)}"
         )

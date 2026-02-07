@@ -27,6 +27,10 @@ export async function loadAvailableModels() {
         window.App.model.vision = data.vision_capable || [];
         window.App.model.defaultText = data.defaults?.text;
         window.App.model.defaultMultimodal = data.defaults?.multimodal;
+        // 利用可否情報の保存
+        window.App.model.textAvailability = data.defaults?.text_availability;
+        window.App.model.multimodalAvailability = data.defaults?.multimodal_availability;
+        
         window.App.model.showAllModels = false;  // デフォルトは推奨のみ表示
         
         console.log(`Loaded ${window.App.model.available.length} recommended models, ${window.App.model.allModels.length} total models`);
@@ -54,7 +58,7 @@ export async function loadAvailableModels() {
             }
         }
         
-        console.log("Models loaded:", window.App.model.available.length);
+
     } catch (err) {
         console.error('Failed to load models:', err);
         showToast('モデルリストの読み込みに失敗しました');
@@ -106,9 +110,14 @@ export function renderModelList() {
         ? `[${visionModelInfo.provider}] ${visionModelInfo.name}`
         : (window.App.model.defaultMultimodal || 'Unknown');
     
-    // デフォルトモデル利用不可の警告
-    const textWarning = !textModelInfo ? ' ⚠️' : '';
-    const visionWarning = !visionModelInfo ? ' ⚠️' : '';
+    // デフォルトモデル利用不可の警告（詳細理由付き）
+    const textWarning = window.App.model.textAvailability?.available === false
+        ? ` <span title="${window.App.model.textAvailability.error}" style="color:#ff9800; cursor:help;">⚠️ ${window.App.model.textAvailability.error}</span>`
+        : (!textModelInfo ? ' ⚠️' : '');
+        
+    const visionWarning = window.App.model.multimodalAvailability?.available === false
+        ? ` <span title="${window.App.model.multimodalAvailability.error}" style="color:#ff9800; cursor:help;">⚠️ ${window.App.model.multimodalAvailability.error}</span>`
+        : (!visionModelInfo ? ' ⚠️' : '');
     
     // 表示モードトグル（推奨のみ / 全モデル）
     const toggleContainer = document.createElement('div');

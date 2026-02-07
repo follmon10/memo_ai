@@ -35,3 +35,7 @@ htmlcov/
 *.bak
 models_api_response.json
 node_modules/
+
+# Lint output files
+ruff_errors.txt
+tsc_errors.txt
