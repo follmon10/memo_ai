@@ -49,11 +49,10 @@ async def test_models_endpoint(client):
     assert "all" in data
     assert "text_only" in data
     assert "vision_capable" in data
-    assert "defaults" in data
 
     # defaults構造の確認
-    assert "text" in data["defaults"]
-    assert "multimodal" in data["defaults"]
+    assert "default_text_model" in data
+    assert "default_multimodal_model" in data
 
     # 配列型の確認
     assert isinstance(data["all"], list)

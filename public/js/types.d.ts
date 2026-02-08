@@ -3,6 +3,41 @@
  * This file provides TypeScript definitions for window globals and DOM elements
  */
 
+/**
+ * AI応答のモデル情報
+ */
+interface ModelInfo {
+    model: string;
+    usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        completion_tokens_details?: {
+            thinking_tokens?: number;
+            reasoning_tokens?: number;
+        };
+        cached_tokens_details?: {
+            thinking_tokens?: number;
+        };
+    };
+    cost?: number;
+    metadata?: {
+        image_base64?: string | null;
+        image_properties?: { title?: string; content?: string } | null;
+    };
+}
+
+/**
+ * チャット履歴のエントリ
+ */
+interface ChatHistoryEntry {
+    type: 'user' | 'ai' | 'system' | 'stamp';
+    message: string;
+    properties?: Record<string, any> | null;
+    timestamp: number;
+    modelInfo?: ModelInfo | null;
+}
+
 // Extend Window interface with custom global functions
 interface Window {
     // Debug functions
@@ -20,12 +55,14 @@ interface Window {
     setPreviewImage: (base64: string, mimeType: string) => void;
     clearPreviewImage: () => void;
     compressImage: (file: File, maxSizeMB?: number) => Promise<string>;
+    enableImageGenMode: () => void;
+    disableImageGenMode: () => void;
 
     // Chat functions
     sendStamp: (emoji: string) => void;
     showAITypingIndicator: () => void;
     hideAITypingIndicator: () => void;
-    addChatMessage: (role: string, text: string, metadata?: any, modelInfo?: any) => void;
+    addChatMessage: (role: 'user' | 'ai' | 'system' | 'stamp', text: string, metadata?: Record<string, any> | null, modelInfo?: ModelInfo | null) => void;
     handleAddFromBubble: (entry: any) => void;
 
     // Prompt functions
@@ -86,7 +123,7 @@ interface Window {
             systemPrompt: string | null;
         };
         chat: {
-            history: any[];
+            history: ChatHistoryEntry[];  // any[] から変更
             session: any[];
             isComposing: boolean;
         };
@@ -206,6 +243,7 @@ interface SaveApiResponse {
  */
 interface TargetsApiResponse {
     targets: Array<{ id: string; type: 'database' | 'page'; title: string }>;
+    recent: Array<{ id: string; type: string; title: string; last_edited: string }>;
 }
 
 /**

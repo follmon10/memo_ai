@@ -9,6 +9,7 @@ import {
 import { 
     compressImage, capturePhotoFromCamera, 
     readFileAsBase64, setPreviewImage, clearPreviewImage,
+    enableImageGenMode, disableImageGenMode,
     setupImageHandlers
 } from './images.js';
 
@@ -39,6 +40,8 @@ window.recordApiCall = recordApiCall; // chat.jsなどで使用
 window.capturePhotoFromCamera = capturePhotoFromCamera;
 window.setPreviewImage = setPreviewImage; // camera.jsから使用されるが、closeボタンからも呼ばれる可能性
 window.clearPreviewImage = clearPreviewImage;
+window.enableImageGenMode = enableImageGenMode;
+window.disableImageGenMode = disableImageGenMode;
 
 window.sendStamp = sendStamp;
 window.showAITypingIndicator = showAITypingIndicator;
@@ -262,6 +265,13 @@ function updateState(icon, message, details = null) {
 }
 window.updateState = updateState;
 
+/**
+ * Fetches data with localStorage caching.
+ * @param {string} url - API endpoint
+ * @param {string} cacheKey - LocalStorage key
+ * @param {number} [ttl=60000] - Time to live in ms
+ * @returns {Promise<any>} Response data
+ */
 async function fetchWithCache(url, cacheKey, ttl = 60000) {
     const now = Date.now();
     const cached = localStorage.getItem(cacheKey);
@@ -569,6 +579,12 @@ async function handleTargetChange(skipRefreshOrEvent = false) {
 }
 window.handleTargetChange = handleTargetChange;
 
+/**
+ * Fetches and truncates page content for context.
+ * @param {string} pageId 
+ * @param {string} type 
+ * @returns {Promise<string | null>} Truncated content or null
+ */
 async function fetchAndTruncatePageContent(pageId, type) {
     // 参照ページが有効かチェック
     // 注: ここでの呼び出し元は sendStamp や handleChatAI

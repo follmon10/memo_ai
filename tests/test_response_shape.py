@@ -117,27 +117,27 @@ async def test_config_api_response_shape(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_api_response_has_message(client):
-    """
-    /api/chat のレスポンスに最低限 message フィールドがあることを検証
-    (完全な検証はモックが複雑なため message のみ)
-    """
+async def test_save_api_response_shape(client):
     from unittest.mock import patch, AsyncMock
 
-    with patch("api.ai.chat_analyze_text_with_ai", new_callable=AsyncMock) as mock_chat:
-        mock_chat.return_value = {
-            "message": "Test response",
-            "model": "test-model",
-        }
+    # Notionへの保存処理をモック
+    with patch("api.notion.create_page", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = "https://notion.so/test-page"
 
         response = await client.post(
-            "/api/chat",
-            json={"text": "test", "target_id": "test-target-id", "model": "test-model"},
+            "/api/save",
+            json={
+                "target_db_id": "test-db-id",
+                "target_type": "database",
+                "properties": {"Title": {"title": [{"text": {"content": "Test"}}]}},
+            },
         )
-
         assert response.status_code == 200
         data = response.json()
 
-        # 必須フィールドの存在確認
-        assert "message" in data, "ChatApiResponse に message フィールドが必要です"
-        assert "model" in data, "ChatApiResponse に model フィールドが必要です"
+        # SaveApiResponse の構造検証
+        expected_keys = {"status", "url"}
+        actual_keys = set(data.keys())
+        missing_keys = expected_keys - actual_keys
+
+        assert not missing_keys, f"SaveApiResponse keywords missing: {missing_keys}"

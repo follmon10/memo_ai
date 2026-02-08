@@ -27,6 +27,12 @@ function extractDisplayValue(val) {
 }
 
 // チャットメッセージを追加
+/**
+ * @param {'user' | 'ai' | 'system' | 'stamp'} type
+ * @param {string} message
+ * @param {Record<string, any> | null} properties
+ * @param {ModelInfo | null} modelInfo
+ */
 export function addChatMessage(type, message, properties = null, modelInfo = null) {
     const entry = {
         type: type,  // 'user' | 'ai' | 'system' | 'stamp'
@@ -185,7 +191,7 @@ export function renderChatHistory() {
                 : model;
             
             let infoText = modelDisplay;
-            if (cost) infoText += ` | $${parseFloat(cost).toFixed(5)}`;
+            if (cost) infoText += ` | $${Number(cost).toFixed(5)}`;
             // usage is object {prompt_tokens, completion_tokens, total_tokens}
             if (usage && usage.total_tokens) {
                 // 送信・受信・思考トークンを個別表示
@@ -570,6 +576,12 @@ export async function handleChatAI(inputText = null) {
     /** @type {HTMLInputElement} */(memoInput).value = '';
     memoInput.dispatchEvent(new Event('input'));
     clearPreviewImage();
+    
+    // 画像生成モードをクリア（タグを消す）
+    const disableImageGenMode = window.disableImageGenMode;
+    if (disableImageGenMode) {
+        disableImageGenMode();
+    }
 
     
     // 4. 使用するAIモデルの決定
