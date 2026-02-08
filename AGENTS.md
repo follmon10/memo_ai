@@ -57,29 +57,100 @@ python -m uvicorn api.index:app --reload --host 0.0.0.0
 
 ---
 
-## Project Structure (ポインタ)
+## Project Structure (全ファイル一覧)
 
-```
-memo_ai/
-├── AGENTS.md           # このファイル (全体ルール)
-├── api/
-│   ├── AGENTS.md       # Backend固有ルール
-│   ├── index.py        # FastAPI アプリケーション
-│   └── endpoints.py    # API ルート定義
-├── public/
-│   ├── AGENTS.md       # HTML/CSS固有ルール
-│   ├── index.html      # エントリHTML
-│   ├── style.css       # グローバルスタイル
-│   └── js/             # JavaScript モジュール
-│       ├── AGENTS.md   # JavaScript固有ルール
-│       ├── main.js     # エントリポイント
-│       └── types.d.ts  # グローバル型定義
-├── tests/
-│   ├── AGENTS.md       # テスト固有ルール
-│   └── test_*.py       # pytest テストスイート
-└── docs/
-    └── AGENTS.md       # 開発環境問題の詳細ガイド
-```
+### ルート
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | このファイル（全体ルール・構造マップ） |
+| `README.md` | プロジェクト概要・セットアップ手順 |
+| `.env` / `.env.example` | 環境変数（APIキー、モデル設定など） |
+| `requirements.txt` | Python依存パッケージ |
+| `pyproject.toml` | Python プロジェクト設定（ruff, pytest等） |
+| `package.json` | npm設定（TypeScriptの型チェック用） |
+| `tsconfig.json` | TypeScript設定（JSDocベースの型チェック） |
+| `vercel.json` | Vercelデプロイ設定（ルーティング、関数設定） |
+
+---
+
+### `api/` — バックエンド (Python / FastAPI)
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | Backend固有ルール |
+| `index.py` | **FastAPIアプリ本体** — ライフスパン管理、CORS、例外ハンドラ、静的ファイル配信、デバッグエンドポイント |
+| `endpoints.py` | **全APIルート定義** — `/api/health`, `/api/config`, `/api/models`, `/api/targets`, `/api/schema`, `/api/content`, `/api/analyze`, `/api/chat`, `/api/save`, `/api/update`, `/api/create-page` |
+| `ai.py` | **AIプロンプト構築** — スキーマ→プロンプト変換、JSON応答検証・修正、`analyze_text_with_ai()`, `chat_analyze_text_with_ai()` |
+| `llm_client.py` | **LLM API通信** — LiteLLM経由の`generate_json()`, マルチモーダル対応, 画像生成(`generate_image_response()`), リトライ・コスト計算・通信ログ |
+| `models.py` | **モデル管理** — 動的レジストリ構築、推奨モデルリスト、モデル自動選択(`select_model_for_input()`)、可用性チェック |
+| `model_discovery.py` | **動的モデル発見** — Gemini/OpenAI APIから利用可能モデルを取得、1時間TTLキャッシュ |
+| `notion.py` | **Notion API通信** — `safe_api_call()`（リトライ・指数バックオフ）、ページ/DB CRUD、スキーマ取得、ブロック追加 |
+| `config.py` | **設定集約** — 全環境変数の読み込み・検証、APIキー管理、デフォルトモデル、LiteLLM設定、定数 |
+| `schemas.py` | **Pydanticモデル** — `AnalyzeRequest`, `SaveRequest`, `ChatRequest` のリクエストスキーマ定義 |
+| `services.py` | **ビジネスロジックヘルパー** — Base64画像除去、Notionプロパティサニタイズ・分割、タイトル自動生成、コンテンツブロック変換 |
+| `rate_limiter.py` | **レート制限** — グローバル1000 req/h、エンドポイント別制限、自動クリーンアップ |
+| `logger.py` | **ロギング基盤** — `setup_logger()` で全モジュール統一ログ、DEBUG_MODEでレベル自動切替 |
+| `__init__.py` | パッケージ初期化 |
+
+---
+
+### `public/` — フロントエンド (Vanilla JS / CSS)
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | HTML/CSS固有ルール |
+| `index.html` | **エントリHTML** — 全UIの構造定義（チャット、モーダル群、ターゲット選択、設定パネル等） |
+| `style.css` | **グローバルスタイル** — CSS変数、レスポンシブ、モーダル、チャットバブル、アニメーション |
+| `favicon.svg` | ファビコン |
+
+#### `public/js/` — JavaScriptモジュール
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | JavaScript固有ルール |
+| `main.js` | **エントリポイント** — グローバル状態(`App`)、ターゲット管理、保存処理、キャッシュ、初期化、ユーティリティ関数 |
+| `chat.js` | **チャット機能** — メッセージ送受信(`handleChatAI()`)、履歴管理、レンダリング、スタンプ送信、Notion保存連携 |
+| `images.js` | **画像処理** — カメラ撮影、画像圧縮、プレビュー表示/削除、画像生成モード切替 |
+| `model.js` | **モデル選択UI** — モデル一覧取得・表示、選択モーダル、コスト表示 |
+| `debug.js` | **デバッグ機能** — デバッグモーダル、API通信記録・コピー、DEBUG_MODE制御 |
+| `prompt.js` | **プロンプト編集** — システムプロンプトモーダル、保存/リセット/ターゲット別読込 |
+| `types.d.ts` | **グローバル型定義** — JSDocベースの型チェック用TypeScript定義ファイル |
+
+---
+
+### `tests/` — テストスイート (pytest)
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | テスト固有ルール |
+| `conftest.py` | **共通フィクスチャ** — モック設定、テスト用ヘルパー関数 |
+| `test_api_contract.py` | **API契約テスト** — JS↔Backendのエンドポイント整合性を自動検証 |
+| `test_html_js_consistency.py` | **HTML/JS整合性テスト** — HTML内のIDとJSの参照整合性を検証 |
+| `test_current_api.py` | エンドポイントの単体テスト |
+| `test_services.py` | `services.py` のヘルパー関数テスト |
+| `test_llm_client.py` | `llm_client.py` のLLM通信テスト |
+| `test_ai_internal.py` | `ai.py` 内部ロジック（プロンプト構築、JSON検証）テスト |
+| `test_enhanced.py` | 拡張テスト（エッジケース等） |
+| `test_advanced_scenarios.py` | 高度なシナリオテスト |
+| `test_critical_paths.py` | 重要パス（ハッピーパス）テスト |
+| `test_gap_coverage.py` | カバレッジギャップの補完テスト |
+| `test_response_shape.py` | APIレスポンス形状テスト |
+| `test_regression_schemas.py` | スキーマリグレッションテスト |
+| `test_rate_limiter.py` | レート制限ロジックテスト |
+| `test_model_discovery.py` | モデル発見機能テスト |
+| `test_json_mode_integration.py` | JSON Mode統合テスト |
+| `test_image_gen_fix.py` | 画像生成修正の検証テスト |
+
+---
+
+### `docs/` — ドキュメント
+
+| ファイル | 責務 |
+| :--- | :--- |
+| `AGENTS.md` | **トラブルシューティング・デバッグパターン詳細ガイド** |
+
+---
 
 **参照**:
 - トラブルシューティング・デバッグパターン → `docs/AGENTS.md`
