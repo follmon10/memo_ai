@@ -284,7 +284,6 @@ async def generate_image_response(prompt: str, model: str) -> Dict[str, Any]:
         RuntimeError: 画像生成に失敗した場合
     """
     from litellm import acompletion, aimage_generation, completion_cost
-    import re
 
     start_time = time.time()
     provider = model.split("/")[0] if "/" in model else "unknown"

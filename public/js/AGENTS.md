@@ -59,3 +59,81 @@ if (window.App.target.schema) {
     }
 }
 ```
+
+---
+
+## State Management Best Practices
+
+### Snapshot Pattern (必須)
+
+**原則**: API呼び出し前に変更可能な状態をローカル変数にキャプチャする
+
+#### ❌ NG: 状態クリア後に参照
+```javascript
+// UI状態をクリア
+clearImageData();
+disableImageGenMode();
+
+// ❌ すでにクリアされた値を送信してしまう
+fetch('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+        image_data: window.App.image.data,           // null
+        image_generation: window.App.image.generationMode  // false
+    })
+});
+```
+
+#### ✅ OK: スナップショット → クリア → 使用
+```javascript
+// 1. スナップショット取得 (先にコピー)
+const imageData = window.App.image.data;
+const mimeType = window.App.image.mimeType;
+const isImageGen = window.App.image.generationMode;
+
+// 2. UI状態をクリア
+clearImageData();
+disableImageGenMode();
+
+// 3. スナップショット値を使用
+fetch('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+        image_data: imageData,
+        image_mime_type: mimeType,
+        image_generation: isImageGen
+    })
+});
+```
+
+### Race Condition Prevention
+
+連続したAPI呼び出しで古いレスポンスが新しいレスポンスを上書きしないよう、`AbortController` を使用:
+
+```javascript
+let currentController = null;
+
+async function fetchData(query) {
+    // 前のリクエストをキャンセル
+    if (currentController) {
+        currentController.abort();
+    }
+    
+    currentController = new AbortController();
+    
+    try {
+        const response = await fetch('/api/search', {
+            method: 'POST',
+            signal: currentController.signal,
+            body: JSON.stringify({ query })
+        });
+        return await response.json();
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('Request was cancelled');
+        } else {
+            throw error;
+        }
+    }
+}
+```
