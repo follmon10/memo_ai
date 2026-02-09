@@ -562,6 +562,7 @@ export async function handleChatAI(inputText = null) {
     // 重要: 送信データを一時変数にコピーしてからステートをクリアする
     const imageToSend = window.App.image.data;
     const mimeToSend = window.App.image.mimeType;
+    const isImageGeneration = window.App.image.generationMode || false;
     
     // 2. 会話履歴の準備
     const historyToSend = window.App.chat.session.slice(-10);
@@ -626,7 +627,7 @@ export async function handleChatAI(inputText = null) {
             image_data: imageToSend,
             image_mime_type: mimeToSend,
             model: window.App.model.current,
-            image_generation: window.App.image.generationMode || false
+            image_generation: isImageGeneration
         };
         
         updateState('📡', 'サーバーに送信中...', { step: 'uploading' });
