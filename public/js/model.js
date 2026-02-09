@@ -8,9 +8,14 @@ export async function loadAvailableModels() {
     try {
         // 全モデルを取得（推奨・非推奨の両方）
         const res = await fetch('/api/models?all=true');
-        if (!res.ok) throw new Error('Failed to load models');
+        if (!res.ok) {
+            window.recordApiCall('/api/models?all=true', 'GET', null, null, 'Failed to load models', res.status);
+            throw new Error('Failed to load models');
+        }
         
+        /** @type {ModelsApiResponse} */
         const data = await res.json();
+        window.recordApiCall('/api/models?all=true', 'GET', null, data, null, res.status);
         
         // 全モデルを保存
         window.App.model.allModels = data.all || [];
@@ -21,8 +26,13 @@ export async function loadAvailableModels() {
         // その他の設定
         window.App.model.textOnly = data.text_only || [];
         window.App.model.vision = data.vision_capable || [];
-        window.App.model.defaultText = data.defaults?.text;
-        window.App.model.defaultMultimodal = data.defaults?.multimodal;
+        window.App.model.defaultText = data.default_text_model;
+        window.App.model.defaultMultimodal = data.default_multimodal_model;
+        // 利用可否情報の保存
+        window.App.model.textAvailability = data.text_availability;
+        window.App.model.multimodalAvailability = data.multimodal_availability;
+        window.App.model.imageGenerationAvailability = data.image_generation_availability;
+        
         window.App.model.showAllModels = false;  // デフォルトは推奨のみ表示
         
         console.log(`Loaded ${window.App.model.available.length} recommended models, ${window.App.model.allModels.length} total models`);
@@ -50,7 +60,7 @@ export async function loadAvailableModels() {
             }
         }
         
-        console.log("Models loaded:", window.App.model.available.length);
+
     } catch (err) {
         console.error('Failed to load models:', err);
         showToast('モデルリストの読み込みに失敗しました');
@@ -102,9 +112,23 @@ export function renderModelList() {
         ? `[${visionModelInfo.provider}] ${visionModelInfo.name}`
         : (window.App.model.defaultMultimodal || 'Unknown');
     
-    // デフォルトモデル利用不可の警告
-    const textWarning = !textModelInfo ? ' ⚠️' : '';
-    const visionWarning = !visionModelInfo ? ' ⚠️' : '';
+    // デフォルトモデル利用不可の警告（詳細理由付き）
+    const textWarning = window.App.model.textAvailability?.available === false
+        ? ` <span title="${window.App.model.textAvailability.error}" style="color:#ff9800; cursor:help;">⚠️ ${window.App.model.textAvailability.error}</span>`
+        : (!textModelInfo ? ' ⚠️' : '');
+        
+    const visionWarning = window.App.model.multimodalAvailability?.available === false
+        ? ` <span title="${window.App.model.multimodalAvailability.error}" style="color:#ff9800; cursor:help;">⚠️ ${window.App.model.multimodalAvailability.error}</span>`
+        : (!visionModelInfo ? ' ⚠️' : '');
+    
+    // 画像生成モデルの表示
+    const imageGenAvailability = window.App.model.imageGenerationAvailability;
+    const imageGenDisplay = imageGenAvailability?.available === true
+        ? imageGenAvailability.model.split('/').pop()  // "gemini/gemini-2.5-flash-image" -> "gemini-2.5-flash-image"
+        : 'Unknown';
+    const imageGenWarning = imageGenAvailability?.available === false
+        ? ` <span title="${imageGenAvailability.error}" style="color:#ff9800; cursor:help;">⚠️ ${imageGenAvailability.error}</span>`
+        : (!imageGenAvailability?.available ? ' ⚠️' : '');
     
     // 表示モードトグル（推奨のみ / 全モデル）
     const toggleContainer = document.createElement('div');
@@ -138,11 +162,13 @@ export function renderModelList() {
             <div class="model-name">✨ 自動選択 (推奨)</div>
             <div class="model-provider" style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
                 <div style="font-size: 0.9em;">📝 テキスト: <span style="font-weight: 500;">${textDisplay}${textWarning}</span></div>
-                <div style="font-size: 0.9em;">🖼️ 画像: <span style="font-weight: 500;">${visionDisplay}${visionWarning}</span></div>
+                <div style="font-size: 0.9em;">🖼️ 画像読み込み: <span style="font-weight: 500;">${visionDisplay}${visionWarning}</span></div>
+                <div style="font-size: 0.9em;">🎨 画像生成: <span style="font-weight: 500;">${imageGenDisplay}${imageGenWarning}</span></div>
             </div>
         </div>
         <span class="model-check">${window.App.model.tempSelected === null ? '✓' : ''}</span>
     `;
+
     autoItem.onclick = () => selectTempModel(null);
     modelList.appendChild(autoItem);
 
@@ -196,9 +222,10 @@ export function createModelItem(model) {
     
     // Vision対応アイコン
     const visionIcon = model.supports_vision ? ' 📷' : '';
+    const imageGenIcon = model.supports_image_generation ? ' 🎨' : '';
     
-    // [Provider] モデル名 [📷]
-    const displayName = `[${model.provider}] ${model.name}${visionIcon}`;
+    // [Provider] モデル名 [📷] [🎨]
+    const displayName = `[${model.provider}] ${model.name}${visionIcon}${imageGenIcon}`;
     
     // 非推奨バッジ（model_typeがあれば表示）
     const notRecommendedBadge = isNotRecommended && model.model_type

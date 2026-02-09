@@ -18,6 +18,8 @@ logger = setup_logger(__name__)
 
 # モデルレジストリのキャッシュ (初回構築後に再利用)
 _MODEL_CACHE = None
+# プロバイダーごとの初期化エラーを保持
+_PROVIDER_ERRORS = {}
 
 # 推奨モデルリスト（ホワイトリスト）
 # フロントエンドUIに表示する厳選モデル
@@ -59,6 +61,8 @@ def _build_model_registry() -> List[Dict[str, Any]]:
     - レート制限: 起動時1回のみ呼び出し
     """
     registry = []
+    # LiteLLMが持つ全モデルのメタデータ（コスト、プロバイダー情報など）を一度だけ取得
+    model_cost_map = litellm.model_cost
 
     # ===== Gemini: 動的取得（ベストプラクティス対応） =====
     gemini_loaded_dynamically = False
@@ -70,7 +74,6 @@ def _build_model_registry() -> List[Dict[str, Any]]:
 
         if gemini_models and len(gemini_models) > 0:
             # Enrich Gemini models with pricing data from LiteLLM while preserving all other fields
-            model_cost_map = litellm.model_cost
             for gemini_model in gemini_models:
                 model_id = gemini_model.get("id", "")
                 # Try to find pricing data in LiteLLM's cost map
@@ -78,14 +81,25 @@ def _build_model_registry() -> List[Dict[str, Any]]:
                     cost_info = model_cost_map[model_id]
                     input_cost = cost_info.get("input_cost_per_token", 0.0)
                     output_cost = cost_info.get("output_cost_per_token", 0.0)
-                    # Update pricing while preserving all other fields (supported_methods, recommended, etc.)
+
+                    # 価格情報の更新
                     gemini_model["cost_per_1k_tokens"] = {
                         "input": input_cost * 1000 if input_cost else 0.0,
                         "output": output_cost * 1000 if output_cost else 0.0,
                     }
 
+                    # 重要: litellmのmode="image_generation"モデルはJSON非対応
+                    # model_discoveryの名前ベース検出で漏れた場合の補正
+                    if cost_info.get("mode") == "image_generation":
+                        gemini_model["supports_json"] = False
+                        logger.debug(
+                            "Detected image_generation model '%s', setting supports_json=False",
+                            model_id,
+                        )
+
             registry.extend(gemini_models)
             gemini_loaded_dynamically = True
+            _PROVIDER_ERRORS.pop("gemini", None)  # Clear error on success
             logger.info(
                 "✅ Added %d Gemini models from dynamic API (pricing enriched)",
                 len(gemini_models),
@@ -93,11 +107,14 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         else:
             logger.warning("No Gemini models returned from API")
             gemini_loaded_dynamically = False
+            _PROVIDER_ERRORS["gemini"] = "No models returned from API"
 
     except ImportError as e:
-        logger.warning("google-genai package not installed: %s", e)
-        logger.info("Install with: pip install -U google-genai")
+        logger.error("❌ CRITICAL: google-genai package not installed: %s", e)
+        logger.error("⚠️  Install with: pip install -U google-genai")
+        logger.error("⚠️  Or run: pip install -r requirements.txt")
         gemini_loaded_dynamically = False
+        _PROVIDER_ERRORS["gemini"] = f"Package missing: {e}"
 
     except Exception as e:
         logger.warning(
@@ -105,6 +122,8 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         )
         logger.info("Falling back to static model list")
         gemini_loaded_dynamically = False
+        # Capture actual error
+        _PROVIDER_ERRORS["gemini"] = str(e)
 
     # ===== OpenAI: 動的取得（ベストプラクティス対応） =====
     openai_loaded_dynamically = False
@@ -118,6 +137,7 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         if openai_models and len(openai_models) > 0:
             registry.extend(openai_models)
             openai_loaded_dynamically = True
+            _PROVIDER_ERRORS.pop("openai", None)  # Clear error on success
             logger.info(
                 "✅ Added %d OpenAI models from dynamic API", len(openai_models)
             )
@@ -125,11 +145,13 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             # APIキーなしの場合は静的リストにフォールバック
             logger.info("No OpenAI models from API (static list will be used)")
             openai_loaded_dynamically = False
+            _PROVIDER_ERRORS["openai"] = "No models returned from API (Check API Key)"
 
     except ImportError as e:
         logger.warning("openai package not installed: %s", e)
         logger.info("Install with: pip install -U openai")
         openai_loaded_dynamically = False
+        _PROVIDER_ERRORS["openai"] = f"Package missing: {e}"
 
     except Exception as e:
         logger.warning(
@@ -137,9 +159,8 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         )
         logger.info("Falling back to static model list")
         openai_loaded_dynamically = False
-
-    # LiteLLMが持つ全モデルのメタデータ（コスト、プロバイダー情報など）を取得
-    model_cost_map = litellm.model_cost
+        # Capture actual error
+        _PROVIDER_ERRORS["openai"] = str(e)
 
     # プロバイダー表示名のマッピング
     PROVIDER_DISPLAY_NAMES = {
@@ -152,8 +173,8 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         "anthropic": "Anthropic",
     }
 
-    # LiteLLMのレジストリに含まれる全モデルを走査
-    seen_models = {}  # モデルID重複チェック用（正規化された名前で管理）
+    # 重複チェック用のセット（正規化名を記録）
+    seen_models = set()  # モデルID重複チェック用（正規化された名前で管理）
 
     for model_id, model_info in model_cost_map.items():
         # Geminiモデルは動的取得できた場合のみスキップ
@@ -193,9 +214,10 @@ def _build_model_registry() -> List[Dict[str, Any]]:
         # 例: "openai/gpt-4" -> "gpt-4"
         normalized_name = model_id.split("/")[-1]
 
-        # 重複チェック: 既に同じ正規化名のモデルが登録されていればスキップ
+        # 重複チェック（同じ正規化名は1度のみ登録）
         if normalized_name in seen_models:
             continue
+        seen_models.add(normalized_name)
 
         # メタデータからプロバイダーIDを取得
         litellm_provider = model_info.get("litellm_provider")
@@ -264,7 +286,6 @@ def _build_model_registry() -> List[Dict[str, Any]]:
             entry["rate_limit_note"] = model_info["rate_limit_note"]
 
         registry.append(entry)
-        seen_models[normalized_name] = True  # 重複チェック用に正規化名を記録
 
     # UI表示順序の調整: プロバイダー名 > モデル名でソート
     registry.sort(key=lambda x: (x["provider"], x["name"]))
@@ -361,19 +382,23 @@ def get_model_metadata(model_id: str) -> Optional[Dict[str, Any]]:
 
 
 def select_model_for_input(
-    has_image: bool = False, user_selection: Optional[str] = None
+    has_image: bool = False,
+    user_selection: Optional[str] = None,
+    image_generation: bool = False,
 ) -> str:
     """
     入力タイプに基づいて最適なモデルをインテリジェントに選択します。
 
     選択ロジック:
     1. ユーザーが明示的にモデルを選択している場合、それを最優先します。
-    2. 画像入力がある場合、Vision対応モデルの中から選択します。
-    3. テキストのみの場合、テキストモデル（またはデフォルト）を使用します。
+    2. 画像生成が要求されている場合、画像生成対応モデルの中から選択します。
+    3. 画像入力がある場合、Vision対応モデルの中から選択します。
+    4. テキストのみの場合、テキストモデル（またはデフォルト）を使用します。
 
     Args:
         has_image: 画像データが含まれているかどうか
         user_selection: ユーザーがフロントエンドで選択したモデルID (任意)
+        image_generation: 画像生成が必要かどうか
 
     Returns:
         使用すべきモデルID
@@ -397,6 +422,37 @@ def select_model_for_input(
             )
 
     # 優先度2: 入力タイプに基づく自動選択
+    if image_generation:
+        # 画像生成モデルが必要です
+
+        # フォールバック候補リスト（優先順）
+        FALLBACK_IMAGE_GEN_MODELS = [
+            "gemini/gemini-2.5-flash-image",
+            "openai/dall-e-3",
+            "openai/dall-e-2",
+        ]
+
+        image_gen_models = get_image_generation_models()
+        if image_gen_models:
+            image_gen_model_ids = [m["id"] for m in image_gen_models]
+
+            # フォールバックリスト順に利用可能なモデルを探す
+            for fallback_model in FALLBACK_IMAGE_GEN_MODELS:
+                if fallback_model in image_gen_model_ids:
+                    logger.info("Using image generation model '%s'", fallback_model)
+                    return fallback_model
+
+            # フォールバックが見つからない場合、利用可能な最初の画像生成モデルを使用
+            logger.info(
+                "Using first available image generation model '%s'",
+                image_gen_models[0]["id"],
+            )
+            return image_gen_models[0]["id"]
+        else:
+            raise RuntimeError(
+                "画像生成に対応したモデルが利用できません。APIキーの設定を確認してください。"
+            )
+
     if has_image:
         # 画像入力を処理できるVisionモデルが必要です
 
@@ -471,6 +527,36 @@ def select_model_for_input(
             )
 
 
+def check_default_model_availability(model_id: str) -> Dict[str, Any]:
+    """
+    デフォルトモデルが実際に利用可能かチェック
+
+    Returns:
+        {
+            "available": bool,
+            "error": str | None  # 実際のエラーメッセージ
+        }
+    """
+    if not model_id:
+        return {"available": False, "error": "Model not specified"}
+
+    # モデルがレジストリに存在するか
+    metadata = get_model_metadata(model_id)
+    if not metadata:
+        return {"available": False, "error": "Model not found in registry"}
+
+    # プロバイダーが利用可能か
+    provider = metadata.get("litellm_provider")
+    if not provider or not is_provider_available(provider):
+        return {"available": False, "error": "API key not configured"}
+
+    # プロバイダー側でエラーが発生しているか
+    if provider in _PROVIDER_ERRORS:
+        return {"available": False, "error": _PROVIDER_ERRORS[provider]}
+
+    return {"available": True, "error": None}
+
+
 # フロントエンド向けのコンビニエンス関数
 def get_text_models() -> List[Dict[str, Any]]:
     """利用可能なテキスト専用モデルのリストを返します"""
@@ -480,3 +566,9 @@ def get_text_models() -> List[Dict[str, Any]]:
 def get_vision_models() -> List[Dict[str, Any]]:
     """利用可能なVision対応モデルのリストを返します"""
     return get_models_by_capability(supports_vision=True)
+
+
+def get_image_generation_models() -> List[Dict[str, Any]]:
+    """利用可能な画像生成対応モデルのリストを返します"""
+    models = get_available_models()
+    return [m for m in models if m.get("supports_image_generation", False)]

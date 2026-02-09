@@ -1,7 +1,38 @@
 // ========== CHAT MODULE ==========
 // チャット履歴管理とAI通信機能
 
+/**
+ * Notion API形式のプロパティ値から表示用テキストを汎用的に抽出する
+ * @param {any} val - Notion API形式のプロパティ値
+ * @returns {string} 表示用テキスト
+ */
+function extractDisplayValue(val) {
+    if (val == null) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    
+    // Notion API形式の各タイプに対応
+    if (val.title) return val.title.map(t => t?.text?.content || t?.plain_text || '').join('');
+    if (val.rich_text) return val.rich_text.map(t => t?.text?.content || t?.plain_text || '').join('');
+    if (val.select) return val.select?.name || '';
+    if (val.multi_select) return val.multi_select.map(o => o?.name || '').join(', ');
+    if (val.date) return val.date?.start || '';
+    if (val.checkbox !== undefined) return val.checkbox ? '✅' : '☐';
+    if (val.number !== undefined) return String(val.number);
+    if (val.url) return val.url;
+    if (val.email) return val.email;
+    if (val.status) return val.status?.name || '';
+    
+    return JSON.stringify(val);
+}
+
 // チャットメッセージを追加
+/**
+ * @param {'user' | 'ai' | 'system' | 'stamp'} type
+ * @param {string} message
+ * @param {Record<string, any> | null} properties
+ * @param {ModelInfo | null} modelInfo
+ */
 export function addChatMessage(type, message, properties = null, modelInfo = null) {
     const entry = {
         type: type,  // 'user' | 'ai' | 'system' | 'stamp'
@@ -21,15 +52,10 @@ export function renderChatHistory() {
     const container = document.getElementById('chatHistory');
     container.innerHTML = '';
     
-    console.log('[renderChatHistory] Rendering', window.App.chat.history.length, 'messages');
+
     
     window.App.chat.history.forEach((entry, index) => {
-        console.log(`[renderChatHistory] Message ${index}:`, {
-            type: entry.type,
-            messageLength: entry.message?.length,
-            messagePreview: entry.message?.substring(0, 50),
-            hasModelInfo: !!entry.modelInfo
-        });
+
         
         // スタンプタイプは特別な表示（吹き出しなし、大きく表示）
         if (entry.type === 'stamp') {
@@ -45,10 +71,78 @@ export function renderChatHistory() {
         
         // メッセージ内容
         const processedMessage = entry.message.replace(/\n/g, '<br>');
-        console.log(`[renderChatHistory] Processed message ${index}:`, processedMessage.substring(0, 100));
+
         bubble.innerHTML = processedMessage;
         
-        console.log(`[renderChatHistory] Bubble innerHTML ${index}:`, bubble.innerHTML.substring(0, 100));
+
+        
+        // AIメッセージにプロパティカードを表示
+        if (entry.type === 'ai' && entry.properties && Object.keys(entry.properties).length > 0) {
+            const propsCard = document.createElement('div');
+            propsCard.className = 'props-card';
+            
+            for (const [key, val] of Object.entries(entry.properties)) {
+                const row = document.createElement('div');
+                row.className = 'props-card-row';
+                
+                const label = document.createElement('span');
+                label.className = 'props-card-key';
+                label.textContent = key;
+                
+                const value = document.createElement('span');
+                value.className = 'props-card-val';
+                value.textContent = extractDisplayValue(val);
+                
+                row.appendChild(label);
+                row.appendChild(value);
+                propsCard.appendChild(row);
+            }
+            
+            bubble.appendChild(propsCard);
+        }
+        
+        // AI画像関連の表示（propertiesの有無に関係なく動作）
+        if (entry.type === 'ai') {
+            const metadata = entry.modelInfo?.metadata;
+            
+            // 画像抽出プロパティのカードUIレンダリング
+            if (metadata?.image_properties) {
+                const card = document.createElement('div');
+                card.className = 'image-properties-card';
+                
+                const props = metadata.image_properties;
+                
+                if (props.title || props.content) {
+                    let cardContent = '<div class="properties-container">';
+                    
+                    if (props.title) {
+                        cardContent += `<div class="property-item"><strong>タイトル:</strong> ${props.title}</div>`;
+                    }
+                    
+                    if (props.content) {
+                        cardContent += `<div class="property-item"><strong>内容:</strong> ${props.content}</div>`;
+                    }
+                    
+                    cardContent += '</div>';
+                    card.innerHTML = cardContent;
+                    bubble.appendChild(card);
+                }
+            }
+            
+            // AI生成画像の表示
+            if (metadata?.image_base64) {
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'generated-image-container';
+                
+                const img = document.createElement('img');
+                img.src = `data:image/png;base64,${metadata.image_base64}`;
+                img.alt = 'AI生成画像';
+                img.className = 'generated-image';
+                
+                imgContainer.appendChild(img);
+                bubble.appendChild(imgContainer);
+            }
+        }
         
         // ユーザーまたはAIメッセージにホバーボタンを追加
         if (entry.type === 'user' || entry.type === 'ai') {
@@ -97,7 +191,7 @@ export function renderChatHistory() {
                 : model;
             
             let infoText = modelDisplay;
-            if (cost) infoText += ` | $${parseFloat(cost).toFixed(5)}`;
+            if (cost) infoText += ` | $${Number(cost).toFixed(5)}`;
             // usage is object {prompt_tokens, completion_tokens, total_tokens}
             if (usage && usage.total_tokens) {
                 // 送信・受信・思考トークンを個別表示
@@ -229,6 +323,7 @@ export async function sendStamp(emoji) {
             throw new Error(err.detail?.message || err.detail || `HTTP ${res.status}`);
         }
         
+        /** @type {ChatApiResponse} */
         const data = await res.json();
         recordApiCall('/api/chat', 'POST', requestBody, data, null, res.status);
         
@@ -250,8 +345,9 @@ export async function sendStamp(emoji) {
     } catch (err) {
         hideAITypingIndicator();
         console.error('[sendStamp] Error:', err);
-        addChatMessage('ai', `❌ エラー: ${err.message}`);
-        recordApiCall('/api/chat', 'POST', { text: emoji }, null, err.message, null);
+        const errorMessage = /** @type {Error} */(err).message;
+        addChatMessage('ai', `❌ エラー: ${errorMessage}`);
+        recordApiCall('/api/chat', 'POST', { text: emoji }, null, errorMessage, null);
     }
 }
 
@@ -287,14 +383,23 @@ export async function handleAddFromBubble(entry) {
     const showToast = window.showToast;
     const setLoading = window.setLoading;
     const recordApiCall = window.recordApiCall;
-    const clearPreviewImage = window.clearPreviewImage;
     
-    if (!entry || !entry.message) return;
+    console.log('[handleAddFromBubble] Called with entry:', entry);
+    console.log('[handleAddFromBubble] Current target:', window.App?.target);
+    
+    if (!entry || !entry.message) {
+        console.warn('[handleAddFromBubble] No entry or message');
+        return;
+    }
     
     if (!window.App.target.id) {
+        console.error('[handleAddFromBubble] No target selected. Target state:', window.App?.target);
         showToast('保存先のターゲットを選択してください');
         return;
     }
+    
+    console.log('[handleAddFromBubble] Target type:', window.App.target.type);
+    console.log('[handleAddFromBubble] Target ID:', window.App.target.id);
     
     // Clean HTML tags from message content
     const content = entry.message
@@ -311,14 +416,17 @@ export async function handleAddFromBubble(entry) {
     setLoading(true, '保存中...');
     
     try {
-        // Determine save method based on target type
+        // Build properties for database type
+        const properties = {};
+        
         if (window.App.target.type === 'database') {
-            // Database: collect properties from form and save
-            const properties = {};
+            // Database: AI抽出プロパティがあればベースとして使用
+            Object.assign(properties, entry.properties || {});
             const inputs = document.querySelectorAll('#propertiesForm .prop-input');
             
             // Collect properties from form inputs
-            inputs.forEach(/** @param {HTMLElement} input */ input => {
+            inputs.forEach(/** @param {Element} el */ el => {
+                const input = /** @type {HTMLElement} */(el);
                 const key = input.dataset?.key;
                 const type = input.dataset?.type;
                 
@@ -368,58 +476,46 @@ export async function handleAddFromBubble(entry) {
                     }
                 }
             }
-            
-            
-            const payload = {
-                target_db_id: window.App.target.id,
-                target_type: 'database',
-                text: content,
-                properties: properties
-            };
-            
-            const res = await fetch('/api/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-            
-            const data = await res.json().catch(() => ({}));
-            recordApiCall('/api/save', 'POST', payload, data, 
-                         res.ok ? null : (data.detail || '保存に失敗しました'), 
-                         res.status);
-            
-            if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
-            
-        } else {
-            // Page: save directly as content block
-            const payload = {
-                target_db_id: window.App.target.id,
-                target_type: 'page',
-                text: content,
-                properties: {} // Required by backend model
-            };
-            
-            const res = await fetch('/api/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-
-            
-            const data = await res.json().catch(() => ({}));
-            recordApiCall('/api/save', 'POST', payload, data,
-                         res.ok ? null : (data.detail || '保存に失敗しました'),
-                         res.status);
-            
-            if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
         }
+        
+        // Build payload for both database and page types
+        const payload = {
+            target_db_id: window.App.target.id,
+            target_type: window.App.target.type === 'database' ? 'database' : 'page',
+            text: content,
+            properties: window.App.target.type === 'database' ? properties : {}
+        };
+        
+        console.log('[handleAddFromBubble] Payload prepared:', payload);
+        console.log('[handleAddFromBubble] Calling /api/save...');
+        
+        // Single unified fetch for both database and page
+        const res = await fetch('/api/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('[handleAddFromBubble] Response status:', res.status);
+        
+        const data = await res.json().catch(() => ({}));
+        recordApiCall('/api/save', 'POST', payload, data, 
+                     res.ok ? null : (data.detail || '保存に失敗しました'), 
+                     res.status);
+        
+        if (!res.ok) throw new Error(data.detail || '保存に失敗しました');
         
         showToast('✅ Notionに追加しました');
         
     } catch(e) {
-        console.error('[handleAddFromBubble] Error:', e);
-        showToast('エラー: ' + e.message);
-        recordApiCall('/api/save', 'POST', { content: content }, null, e.message, null);
+        console.error('[handleAddFromBubble] Error caught:', e);
+        console.error('[handleAddFromBubble] Error stack:', /** @type {Error} */(e).stack);
+        const errorMessage = /** @type {Error} */(e).message;
+        showToast('❌ 保存エラー: ' + errorMessage);
+        // Record error for debugging
+        if (recordApiCall) {
+            recordApiCall('/api/save', 'POST', {}, null, errorMessage, null);
+        }
     } finally {
         setLoading(false);
     }
@@ -442,7 +538,7 @@ export async function handleChatAI(inputText = null) {
 
     
     // 入力チェック: テキストまたは画像が必須
-    if (!text && !window.App.image.base64) {
+    if (!text && !window.App.image.data) {
         showToast("テキストまたは画像を入力してください");
         return;
     }
@@ -456,25 +552,23 @@ export async function handleChatAI(inputText = null) {
     
     // 1. ユーザーメッセージの表示準備
     let displayMessage = text;
-    if (window.App.image.base64) {
-        const imgTag = `<br><img src="data:${window.App.image.mimeType};base64,${window.App.image.base64}" style="max-width:100px; border-radius:4px;">`;
+    if (window.App.image.data) {
+        const imgTag = `<br><img src="data:${window.App.image.mimeType};base64,${window.App.image.data}" style="max-width:100px; border-radius:4px;">`;
         displayMessage = (text ? text + "<br>" : "") + imgTag;
     }
     
     addChatMessage('user', displayMessage);
     
     // 重要: 送信データを一時変数にコピーしてからステートをクリアする
-    const imageToSend = window.App.image.base64;
+    const imageToSend = window.App.image.data;
     const mimeToSend = window.App.image.mimeType;
+    const isImageGeneration = window.App.image.generationMode || false;
     
     // 2. 会話履歴の準備
     const historyToSend = window.App.chat.session.slice(-10);
     
-    // 3. AIへのコンテキスト用にメッセージを追加
-    let contextMessage = text || '';
-    if (contextMessage && imageToSend) {
-         // Keep text only if present
-    }
+    // 3. AIへのコンテキスト用にメッセージを追加（画像送信時もマーカーを残す）
+    const contextMessage = text || (imageToSend ? '[画像を送信しました]' : '');
     if (contextMessage) {
         window.App.chat.session.push({role: 'user', content: contextMessage});
     }
@@ -483,6 +577,12 @@ export async function handleChatAI(inputText = null) {
     /** @type {HTMLInputElement} */(memoInput).value = '';
     memoInput.dispatchEvent(new Event('input'));
     clearPreviewImage();
+    
+    // 画像生成モードをクリア（タグを消す）
+    const disableImageGenMode = window.disableImageGenMode;
+    if (disableImageGenMode) {
+        disableImageGenMode();
+    }
 
     
     // 4. 使用するAIモデルの決定
@@ -526,7 +626,8 @@ export async function handleChatAI(inputText = null) {
             reference_context: referenceContext,
             image_data: imageToSend,
             image_mime_type: mimeToSend,
-            model: window.App.model.current
+            model: window.App.model.current,
+            image_generation: isImageGeneration
         };
         
         updateState('📡', 'サーバーに送信中...', { step: 'uploading' });
@@ -545,6 +646,7 @@ export async function handleChatAI(inputText = null) {
             throw new Error(errorData.detail?.message || JSON.stringify(errorData));
         }
         
+        /** @type {ChatApiResponse} */
         const data = await res.json();
         
         // API通信履歴に記録
@@ -569,18 +671,39 @@ export async function handleChatAI(inputText = null) {
             cost: data.cost
         });
         
-        // 5. AIメッセージの表示
-        if (data.message) {
+        // 5. AIメッセージの表示（画像生成時はmessageが空でもimage_base64があればOK）
+        if (data.message || data.image_base64) {
+            const displayMessage = data.message || '';
             const modelInfo = {
                 model: data.model,
                 usage: data.usage,
-                cost: data.cost
+                cost: data.cost,
+                metadata: {
+                    image_base64: data.image_base64 || null,
+                    image_properties: data.metadata?.image_properties || null
+                }
             };
-            addChatMessage('ai', data.message, null, modelInfo);
-            window.App.chat.session.push({role: 'assistant', content: data.message});
+            addChatMessage('ai', displayMessage, data.properties || null, modelInfo);
+            // プロパティ情報をセッション履歴に含めて後続会話で参照可能にする
+            let sessionContent = displayMessage;
+            if (data.properties) {
+                const propSummary = Object.entries(data.properties)
+                    .map(([k, v]) => {
+                        if (v?.title) return `${k}: ${v.title[0]?.text?.content || ''}`;
+                        if (v?.rich_text) return `${k}: ${v.rich_text[0]?.text?.content || ''}`;
+                        if (v?.select) return `${k}: ${v.select.name}`;
+                        if (v?.multi_select) return `${k}: ${v.multi_select.map(o => o.name).join(', ')}`;
+                        return `${k}: ${JSON.stringify(v)}`;
+                    })
+                    .join(' / ');
+                sessionContent += `\n[抽出データ: ${propSummary}]`;
+            }
+            if (sessionContent) {
+                window.App.chat.session.push({role: 'assistant', content: sessionContent});
+            }
         } else {
-            console.warn('[handleChatAI] data.message is falsy');
-            const warningMsg = `⚠️ AIからの応答メッセージが空でした（model: ${data.model || 'unknown'}）`;
+            console.warn('[handleChatAI] data.message and image_base64 are both falsy');
+            const warningMsg = `⚠️ AIからの応答が空でした（model: ${data.model || 'unknown'}）`;
             addChatMessage('system', warningMsg);
         }
         
@@ -592,12 +715,13 @@ export async function handleChatAI(inputText = null) {
     } catch(e) {
         console.error('[handleChatAI] Error:', e);
         hideAITypingIndicator();
+        const errorMessage = /** @type {Error} */(e).message;
         
-        recordApiCall('/api/chat', 'POST', { text: text, target_id: window.App.target.id }, null, e.message, null);
+        recordApiCall('/api/chat', 'POST', { text: text, target_id: window.App.target.id }, null, errorMessage, null);
         
-        updateState('❌', 'Error', { error: e.message });
-        addChatMessage('system', "エラー: " + e.message);
-        showToast("エラー: " + e.message);
+        updateState('❌', 'Error', { error: errorMessage });
+        addChatMessage('system', "エラー: " + errorMessage);
+        showToast("エラー: " + errorMessage);
     }
 }
 

@@ -28,18 +28,18 @@ class SimpleRateLimiter:
             logger.info("✅ Enabled - %d requests/hour (global)", self.global_per_hour)
 
     async def check_rate_limit(
-        self, request: Request, endpoint: str = "default"
+        self, request: Request, endpoint: str = "default", custom_limit: int = None
     ) -> dict:
         """グローバルレート制限をチェック（1000 req/時間）"""
         if not self.enabled:
             return {}
 
         self._cleanup_old_entries()
-        self._check_global_limit(endpoint)
+        self._check_global_limit(endpoint, custom_limit)
         return {}
 
-    def _check_global_limit(self, endpoint: str):
-        """グローバルレート制限チェック（1時間1000リクエスト）"""
+    def _check_global_limit(self, endpoint: str, custom_limit: int = None):
+        """グローバルレート制限チェック（1時間1000リクエスト、またはカスタム制限）"""
         if self.global_per_hour <= 0:
             return
 
@@ -51,18 +51,19 @@ class SimpleRateLimiter:
         self.global_log[key] = [t for t in self.global_log[key] if t > now - window]
         count = len(self.global_log[key])
 
-        if count >= self.global_per_hour:
+        limit = custom_limit if custom_limit is not None else self.global_per_hour
+        if count >= limit:
             logger.warning(
                 "⚠️ Global limit reached for %s: %d/%d",
                 endpoint,
                 count,
-                self.global_per_hour,
+                limit,
             )
             raise HTTPException(
                 status_code=429,
                 detail={
                     "error": "レート制限を超えました",
-                    "message": f"1時間あたり{self.global_per_hour}リクエストまでです。しばらく待ってから再試行してください。",
+                    "message": f"1時間あたり{limit}リクエストまでです。しばらく待ってから再試行してください。",
                     "retry_after": 3600,
                 },
             )

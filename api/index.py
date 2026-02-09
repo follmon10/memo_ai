@@ -29,8 +29,10 @@ from api.config import (
     normalize_notion_id,
 )
 
-# レート制限
-from api.rate_limiter import rate_limiter
+
+# Endpoints definition
+from api.endpoints import router as endpoints_router
+
 
 # 環境変数の読み込み
 # ローカル環境では.envファイルから読み込み、Vercel環境では環境変数から直接読み込み
@@ -109,7 +111,7 @@ async def lifespan(app: FastAPI):
             import subprocess
             import glob
 
-            js_files = glob.glob("public/*.js")
+            js_files = glob.glob("public/js/*.js")
             syntax_errors = []
 
             for js_file in js_files:
@@ -187,7 +189,7 @@ async def lifespan(app: FastAPI):
 
         print("")
         print("💡 サーバーを停止するには: Ctrl + C を押してください")
-        print("=")
+        print("=" * 70)
 
     # 環境変数の簡易チェック
     if not is_vercel:
@@ -289,22 +291,7 @@ app.add_middleware(
 )
 
 # --- Endpoints Router Include ---
-# System系エンドポイントをendpoints.pyに分離
-from api.endpoints import router as endpoints_router
-import api.endpoints as endpoints_module
-
-# endponts.pyにrate_limiterを渡す（循環参照回避のため）
-endpoints_module.rate_limiter = rate_limiter
-
 app.include_router(endpoints_router)
-
-
-# --- ヘルパー関数 (Helper Functions) ---
-# services.py から import
-
-
-# --- Pydanticモデル定義 (データバリデーション用) ---
-# schemas.py から import
 
 
 # --- Endpoints ---
@@ -327,18 +314,6 @@ if os.environ.get("VERCEL"):
         from fastapi.responses import RedirectResponse
 
         return RedirectResponse(url="/index.html")
-
-
-# --- System系エンドポイントはendpoints.pyに移行済み ---
-#
-# @app.get("/api/health")
-# def health_check():
-#     """
-#     ヘルスチェック用エンドポイント
-#
-#     サーバーが正常に稼働しているかを確認するために監視サービス等から叩かれます。
-#     """
-#     return {"status": "ok"}
 
 
 # Debug endpoint (development only) - guarded by DEBUG_MODE
@@ -460,6 +435,15 @@ if DEBUG_MODE:
             "raw_list": all_models,  # 全モデルの生データ
         }
 
+        # バックエンドAPIログ（Notion + LLM）
+        from api.notion import notion_api_log
+        from api.llm_client import llm_api_log
+
+        backend_logs = {
+            "notion": list(notion_api_log),
+            "llm": list(llm_api_log),
+        }
+
         return {
             "timestamp": timestamp,
             "environment": environment,
@@ -469,17 +453,10 @@ if DEBUG_MODE:
             "cors": cors_info,
             "routes": routes[:20],  # 最初の20個のみ
             "models": models_info,
+            "backend_logs": backend_logs,
         }
 
     # End of DEBUG_MODE section
-
-
-# --- すべてのAPIエンドポイントはendpoints.pyに移行済み ---
-# System系、Notion参照系、AI系、Update系の全エンドポイントは api/endpoints.py に統合されています
-
-
-# --- ページ更新エンドポイント（endpoints.pyに移行済み） ---
-# update_page → api/endpoints.py
 
 
 # --- 静的ファイルの配信設定 ---

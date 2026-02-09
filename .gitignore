@@ -34,3 +34,12 @@ htmlcov/
 # Project specific backup files
 *.bak
 models_api_response.json
+node_modules/
+
+# Lint output files
+ruff_errors.txt
+tsc_errors.txt
+
+# Test debug output
+tests/debug_output.txt
+tests/test_output.txt

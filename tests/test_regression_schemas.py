@@ -46,13 +46,19 @@ async def test_models_response_schema(client):
     data = response.json()
 
     # 必須キーの存在確認
-    required_keys = ["all", "text_only", "vision_capable", "defaults"]
+    required_keys = [
+        "all",
+        "text_only",
+        "vision_capable",
+        "image_generation_capable",
+        "default_text_model",
+        "default_multimodal_model",
+        "text_availability",
+        "multimodal_availability",
+        "image_generation_availability",
+    ]
     for key in required_keys:
         assert key in data, f"Missing required key: {key}"
-
-    # defaults構造の検証
-    assert "text" in data["defaults"], "defaults.text is required"
-    assert "multimodal" in data["defaults"], "defaults.multimodal is required"
 
     # 配列型の検証
     assert isinstance(data["all"], list), "all should be a list"

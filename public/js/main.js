@@ -3,12 +3,13 @@
 import { 
     openDebugModal, closeDebugModal, loadDebugInfo, 
     initializeDebugMode, updateDebugModeUI, 
-    recordApiCall, copyLastApiCall 
+    recordApiCall, copyApiHistory, copyApiEntry, debugLog 
 } from './debug.js';
 
 import { 
     compressImage, capturePhotoFromCamera, 
     readFileAsBase64, setPreviewImage, clearPreviewImage,
+    enableImageGenMode, disableImageGenMode,
     setupImageHandlers
 } from './images.js';
 
@@ -32,12 +33,15 @@ import {
 window.openDebugModal = openDebugModal;
 window.closeDebugModal = closeDebugModal;
 window.loadDebugInfo = loadDebugInfo;
-window.copyLastApiCall = copyLastApiCall;
+window.copyApiHistory = copyApiHistory;
+window.copyApiEntry = copyApiEntry;
 window.recordApiCall = recordApiCall; // chat.jsなどで使用
 
 window.capturePhotoFromCamera = capturePhotoFromCamera;
 window.setPreviewImage = setPreviewImage; // camera.jsから使用されるが、closeボタンからも呼ばれる可能性
 window.clearPreviewImage = clearPreviewImage;
+window.enableImageGenMode = enableImageGenMode;
+window.disableImageGenMode = disableImageGenMode;
 
 window.sendStamp = sendStamp;
 window.showAITypingIndicator = showAITypingIndicator;
@@ -58,6 +62,7 @@ window.selectTempModel = selectTempModel;
 window.saveModelSelection = saveModelSelection;
 window.closeModelModal = closeModelModal;
 window.copyModelList = () => import('./debug.js').then(m => m.copyModelList()); // 動的インポートまたはdebug.jsでexport
+window.debugLog = debugLog;
 
 // --- Global State ---
 
@@ -68,12 +73,14 @@ const App = {
             TARGETS: 'memo_ai_targets',
             PAGE_CONTENT_PREFIX: 'memo_ai_content_',
             CHAT_HISTORY: 'memo_ai_chat_history',
-            PROMPT_PREFIX: 'memo_ai_prompt_'
+            PROMPT_PREFIX: 'memo_ai_prompt_',
+            SHOW_MODEL_INFO: 'memo_ai_show_model_info'
         },
         TTL: {
             TARGETS: 5 * 60 * 1000, // 5 minutes (DB list caches slightly longer)
             PAGE_CONTENT: 10 * 60 * 1000 // 10 minutes
-        }
+        },
+        lastTargetRefresh: 0 // Timestamp of last target list refresh
     },
     
     // Application State
@@ -91,8 +98,9 @@ const App = {
     },
     
     image: {
-        base64: null,
-        mimeType: null
+        data: null,  // Base64画像データ
+        mimeType: null,  // MIMEタイプ
+        generationMode: false,  // 画像生成モード
     },
     
     model: {
@@ -105,24 +113,25 @@ const App = {
         current: null,      // Currently selected model ID
         tempSelected: null, // Temporary selection in modal
         showAllModels: false, // UI toggle state
-        sessionCost: 0      // Session running cost
+        sessionCost: 0,      // Session running cost
+        textAvailability: null,      // Availability of default text model
+        multimodalAvailability: null, // Availability of default multimodal model
+        imageGenerationAvailability: null // Availability of image generation models
     },
     
     debug: {
         enabled: true,      // Frontend debug logging
         serverMode: false,  // Server DEBUG_MODE status
         showModelInfo: true, // Show model info in chat bubbles
-        lastApiCall: null,   // Last API call details
-        lastModelList: null  // For debugging model list
+        apiHistory: [],      // 直近10件のAPI通信履歴
+        lastBackendLogs: null,  // サーバーから取得したバックエンドログ
+        lastModelList: null,  // For debugging model list
+        lastAllLogs: null
     },
     
-    defaultPrompt: `あなたは優秀な秘書です。
-ユーザーの入力を元に、Notionに保存するための整理されたドキュメントを作成してください。
-以下のルールに従ってください：
-1. ユーザーの意図を汲み取り、適切なタイトルと本文を構成する
-2. 重要な情報は箇条書きなどを活用して見やすくする
-3. タスクが含まれる場合は、ToDoリスト形式にする
-4. 丁寧な日本語で出力する`
+    // バックエンドから取得するため、初期値は空文字列
+    // debug.js の initializeDebugMode() で /api/config から取得される
+    defaultPrompt: ''
 };
 
 // グローバルに公開（モジュール間共有のため）
@@ -133,14 +142,37 @@ window.App = App;
 
 // --- Utility Functions ---
 
-function debugLog(...args) {
-    if (App.debug.enabled) {
-        console.log('[DEBUG]', ...args);
-    }
-}
+// Debug logging is now imported from debug.js
 
-// グローバル公開
-window.debugLog = debugLog;
+/**
+ * Centralized Save API Caller
+ * Handles fetch, error parsing, debug recording, and user feedback.
+ *
+ * @param {Object} payload - Request body for /api/save
+ * @param {{ success: string, failure: string }} messages - Toast messages
+ * @returns {Promise<Object>} - Parsed response data
+ * @throws {Error} - On HTTP error or network failure
+ */
+async function performSaveRequest(payload, messages) {
+    const res = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    
+    if (!res.ok) {
+        const errorText = await res.text();
+        recordApiCall('/api/save', 'POST', payload, null, errorText, res.status);
+        throw new Error(errorText);
+    }
+    
+    /** @type {SaveApiResponse} */
+    const data = await res.json();
+    recordApiCall('/api/save', 'POST', payload, data, null, res.status);
+    updateSaveStatus(`✅ ${messages.success}`);
+    showToast(messages.success);
+    return data;
+}
 
 function updateStatusArea() {
     const loading = document.getElementById('loadingIndicator');
@@ -207,7 +239,7 @@ function updateState(icon, message, details = null) {
     
     // UI要素がない場合はログ出力のみ
     if (!stateDisplay || !stateIcon || !stateText) {
-        console.log(`[State] ${icon} ${message}`, details);
+
         return;
     }
     
@@ -220,7 +252,7 @@ function updateState(icon, message, details = null) {
         stateDetailsContent.textContent = JSON.stringify(details, null, 2);
     }
     
-    console.log(`[State] ${icon} ${message}`, details);
+
     
     // Auto-hide after 3 seconds if this is a completion state (✅ or ❌)
     if (icon === '✅' || icon === '❌') {
@@ -233,6 +265,13 @@ function updateState(icon, message, details = null) {
 }
 window.updateState = updateState;
 
+/**
+ * Fetches data with localStorage caching.
+ * @param {string} url - API endpoint
+ * @param {string} cacheKey - LocalStorage key
+ * @param {number} [ttl=60000] - Time to live in ms
+ * @returns {Promise<any>} Response data
+ */
 async function fetchWithCache(url, cacheKey, ttl = 60000) {
     const now = Date.now();
     const cached = localStorage.getItem(cacheKey);
@@ -247,9 +286,13 @@ async function fetchWithCache(url, cacheKey, ttl = 60000) {
     
     debugLog(`Fetching ${url}`);
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    if (!res.ok) {
+        recordApiCall(url, 'GET', null, null, `HTTP ${res.status}`, res.status);
+        throw new Error(`Fetch failed: ${res.status}`);
+    }
     
     const data = await res.json();
+    recordApiCall(url, 'GET', null, data, null, res.status);
     localStorage.setItem(cacheKey, JSON.stringify({
         timestamp: now,
         data: data
@@ -260,25 +303,90 @@ async function fetchWithCache(url, cacheKey, ttl = 60000) {
 window.fetchWithCache = fetchWithCache;
 
 
+// --- Cache Cleanup ---
+
+/**
+ * 起動時にlocalStorageの期限切れキャッシュを削除する。
+ * localStorage容量制限（約5MB）への到達を防止する。
+ */
+function cleanUpCache() {
+    const now = Date.now();
+    const deleted = [];
+    
+    // Iterate backwards to avoid index shifting when removing items
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        
+        // Only clean cache keys managed by this app
+        const isContentCache = key.startsWith(App.cache.KEYS.PAGE_CONTENT_PREFIX);
+        const isTargetsCache = key === App.cache.KEYS.TARGETS;
+        
+        if (!isContentCache && !isTargetsCache) continue;
+        
+        try {
+            const item = JSON.parse(localStorage.getItem(key));
+            if (!item || !item.timestamp) {
+                // Corrupted entry (no timestamp) — remove
+                localStorage.removeItem(key);
+                deleted.push(key);
+                continue;
+            }
+            
+            // Use appropriate TTL per key type, with 2x safety margin
+            const ttl = isContentCache
+                ? App.cache.TTL.PAGE_CONTENT * 2
+                : App.cache.TTL.TARGETS * 2;
+            
+            if (now - item.timestamp > ttl) {
+                localStorage.removeItem(key);
+                deleted.push(key);
+            }
+        } catch (e) {
+            // JSON parse failed — corrupted entry, remove it
+            localStorage.removeItem(key);
+            deleted.push(key);
+        }
+    }
+    
+    if (deleted.length > 0) {
+        debugLog(`[Cache] Cleaned up ${deleted.length} expired item(s)`);
+    }
+}
+
+
 // --- Notion Logic (Targets, Saving, Forms) ---
 
+let _loadTargetsRunning = false;
+
 async function loadTargets(forceRefresh = false) {
+    // Prevent concurrent calls that could cause duplicate entries
+    if (_loadTargetsRunning) {
+        debugLog('[loadTargets] Already running - skipping');
+        return;
+    }
+    _loadTargetsRunning = true;
+    
     try {
         let data;
         
         if (forceRefresh) {
             // 強制更新：キャッシュをバイパスしてAPIから直接取得
             localStorage.removeItem(App.cache.KEYS.TARGETS);
-            console.log('[loadTargets] Force refresh - fetching from API');
+
             const res = await fetch('/api/targets');
-            if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+            if (!res.ok) {
+                recordApiCall('/api/targets', 'GET', null, null, `HTTP ${res.status}`, res.status);
+                throw new Error(`Fetch failed: ${res.status}`);
+            }
             data = await res.json();
+            recordApiCall('/api/targets', 'GET', null, data, null, res.status);
             // 取得したデータをキャッシュに保存
             localStorage.setItem(App.cache.KEYS.TARGETS, JSON.stringify({
                 timestamp: Date.now(),
                 data: data
             }));
-            console.log('[loadTargets] Fetched', data.targets.length, 'targets');
+
         } else {
             data = await fetchWithCache(
                 '/api/targets', 
@@ -288,6 +396,9 @@ async function loadTargets(forceRefresh = false) {
         }
         
         renderTargetOptions(data.targets);
+        
+        // Update last refresh timestamp
+        App.cache.lastTargetRefresh = Date.now();
 
         // Enable header buttons after targets load
         /** @type {HTMLButtonElement | null} */
@@ -299,6 +410,8 @@ async function loadTargets(forceRefresh = false) {
     } catch (err) {
         console.error('Failed to load targets:', err);
         showToast('ターゲット読込失敗');
+    } finally {
+        _loadTargetsRunning = false;
     }
 }
 window.loadTargets = loadTargets;
@@ -369,11 +482,22 @@ function renderTargetOptions(targets) {
         // Fallback if no targets exist at all (only "Create New Page")
         selector.value = 'new_page'; 
     }
+    
+    // Auto-open new page modal if no valid targets exist (empty list)
+    if (validTargets.length === 0) {
+        // Use setTimeout to ensure DOM is fully rendered and modal event listeners are ready
+        setTimeout(() => {
+            debugLog('[renderTargetOptions] No pages found - opening new page modal');
+            openNewPageModal();
+        }, 100);
+    }
 }
 
+/**
+ * @param {boolean | Event} [skipRefreshOrEvent]
+ * @returns {Promise<void>}
+ */
 async function handleTargetChange(skipRefreshOrEvent = false) {
-    // HTMLイベントから呼ばれた場合はEventオブジェクトが渡されるため、booleanかどうかをチェック
-    const skipRefresh = skipRefreshOrEvent === true;
     
     /** @type {HTMLSelectElement | null} */
     const selector = /** @type {any} */(document.getElementById('appSelector'));
@@ -430,18 +554,15 @@ async function handleTargetChange(skipRefreshOrEvent = false) {
         
         // スキーマ取得
         try {
-            console.log('[DEBUG] Fetching schema for:', targetId);
             const res = await fetch(`/api/schema/${targetId}`);
-            console.log('[DEBUG] Schema response status:', res.status, res.ok);
             if (res.ok) {
+                /** @type {SchemaApiResponse} */
                 const data = await res.json();
-                console.log('[DEBUG] Schema API response:', data);
-                console.log('[DEBUG] Schema data:', data.schema);
+                recordApiCall(`/api/schema/${targetId}`, 'GET', null, data, null, res.status);
                 App.target.schema = data.schema;
-                console.log('[DEBUG] formContainer exists:', !!formContainer);
                 if (formContainer) renderDynamicForm(formContainer, data.schema);
             } else {
-                console.error('[DEBUG] Schema fetch failed with status:', res.status);
+                recordApiCall(`/api/schema/${targetId}`, 'GET', null, null, `HTTP ${res.status}`, res.status);
             }
         } catch (e) {
             console.error('Schema fetch error:', e);
@@ -453,16 +574,17 @@ async function handleTargetChange(skipRefreshOrEvent = false) {
         if (propsContainer) propsContainer.style.display = 'none';
     }
     
-    // バックグラウンドでリストを更新（削除されたページを反映）
-    // skipRefresh=true の場合は無限ループ防止のためスキップ
-    if (!skipRefresh) {
-        setTimeout(() => {
-            loadTargets(true);
-        }, 100);
-    }
+    // Note: リスト更新はセレクターの click イベントリスナーで行う（5秒スロットリング付き）
+    // handleTargetChange 内では実行しない（二重更新防止）
 }
 window.handleTargetChange = handleTargetChange;
 
+/**
+ * Fetches and truncates page content for context.
+ * @param {string} pageId 
+ * @param {string} type 
+ * @returns {Promise<string | null>} Truncated content or null
+ */
 async function fetchAndTruncatePageContent(pageId, type) {
     // 参照ページが有効かチェック
     // 注: ここでの呼び出し元は sendStamp や handleChatAI
@@ -492,9 +614,7 @@ window.fetchAndTruncatePageContent = fetchAndTruncatePageContent;
 // --- Form & Input Logic ---
 
 function renderDynamicForm(container, schema) {
-    console.log('[DEBUG] renderDynamicForm called');
-    console.log('[DEBUG] container:', container);
-    console.log('[DEBUG] schema:', schema);
+
     
     if (!container) {
         console.error('[DEBUG] No container element found!');
@@ -504,7 +624,7 @@ function renderDynamicForm(container, schema) {
     
     // **重要**: 逆順で表示 (Reverse Order)
     const entries = Object.entries(schema).reverse();
-    console.log('[DEBUG] Schema entries count:', entries.length);
+
     
     for (const [key, prop] of entries) {
         // Notionが自動管理するシステムプロパティは編集不要なのでスキップ
@@ -604,7 +724,7 @@ async function saveToDatabase() {
     if (!memoInput) return;
     const content = memoInput.value;
     
-    if (!content && !App.image.base64) {
+    if (!content && !App.image.data) {
         showToast('メモまたは画像を入力してください');
         return;
     }
@@ -615,7 +735,8 @@ async function saveToDatabase() {
     const properties = {};
     const inputs = document.querySelectorAll('#propertiesForm .prop-input');
     
-    inputs.forEach(/** @param {HTMLElement} input */ input => {
+    inputs.forEach(/** @param {Element} el */ el => {
+        const input = /** @type {HTMLElement} */(el);
         const key = input.dataset?.key;
         const type = input.dataset?.type;
         
@@ -651,26 +772,18 @@ async function saveToDatabase() {
     };
     
     try {
-        const res = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+        await performSaveRequest(body, { 
+            success: '保存しました', 
+            failure: '保存失敗' 
         });
-        
-        if (!res.ok) throw new Error(await res.text());
-        
-        const data = await res.json();
-        recordApiCall('/api/save', 'POST', body, data, null, res.status);
-        
-        updateSaveStatus(' 保存しました！');
-        showToast('保存しました');
         
         // クリア
         memoInput.value = '';
         clearPreviewImage();
         
         // フォームリセット
-        inputs.forEach(/** @param {HTMLElement} input */ input => {
+        inputs.forEach(/** @param {Element} el */ el => {
+             const input = /** @type {HTMLElement} */(el);
              if (/** @type {HTMLInputElement} */(input).type === 'checkbox') /** @type {HTMLInputElement} */(input).checked = false;
              else if (input.tagName === 'SELECT') /** @type {HTMLSelectElement} */(input).selectedIndex = -1;
              else /** @type {HTMLInputElement} */(input).value = '';
@@ -678,9 +791,8 @@ async function saveToDatabase() {
         
     } catch (e) {
         console.error('Save error', e);
-        updateSaveStatus(' 保存失敗');
-        showToast(`エラー: ${e.message}`);
-        recordApiCall('/api/save', 'POST', body, null, e.message, null);
+        updateSaveStatus('❌ 保存失敗');
+        showToast(`エラー: ${/** @type {Error} */(e).message}`);
     } finally {
         setLoading(false);
     }
@@ -692,7 +804,7 @@ async function saveToPage() {
     if (!memoInput) return;
     const content = memoInput.value;
     
-    if (!content && !App.image.base64) {
+    if (!content && !App.image.data) {
         showToast('メモまたは画像を入力してください');
         return;
     }
@@ -707,33 +819,16 @@ async function saveToPage() {
     };
     
     try {
-        // Pageへの追記は別のエンドポイントまたは同じエンドポイントで分岐
-        // ここでは便宜上 /api/save を拡張して利用すると想定、または /api/append
-        // 現在の実装に合わせて /api/save を使用（バックエンドが対応している前提）
-        // バックエンド側で page_id がある場合は追記モードになる
-        
-        const res = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+        await performSaveRequest(body, {
+            success: 'ページに追記しました',
+            failure: '追記失敗'
         });
-        
-        if (!res.ok) throw new Error(await res.text());
-        
-        const data = await res.json();
-        recordApiCall('/api/save', 'POST', body, data, null, res.status);
-        
-        updateSaveStatus('✅ 追記しました！');
-        showToast('ページに追記しました');
         
         memoInput.value = '';
         clearPreviewImage();
         
     } catch (e) {
         console.error('Append error', e);
-        updateSaveStatus(' 追記失敗');
-        showToast(`エラー: ${e.message}`);
-        recordApiCall('/api/save', 'POST', body, null, e.message, null);
     } finally {
         setLoading(false);
     }
@@ -791,25 +886,6 @@ function openNewPageModal() {
     modal.classList.remove('hidden');
     input.focus();
     
-    // Handle create button
-    const handleCreate = () => {
-        const title = input.value.trim();
-        if (title) {
-            modal.classList.add('hidden');
-            createNewPage(title);
-        } else {
-            showToast('ページ名を入力してください');
-        }
-    };
-    
-    // Handle cancel
-    const handleCancel = () => {
-        modal.classList.add('hidden');
-        // Reset app selector to previous value
-        const appSelector = /** @type {HTMLSelectElement} */(document.getElementById('appSelector'));
-        if (appSelector) appSelector.value = App.target.id || '';
-    };
-    
     // Handle keyboard events
     const onKeydown = (/** @type {KeyboardEvent} */ e) => {
         if (e.key === 'Enter') {
@@ -820,50 +896,72 @@ function openNewPageModal() {
         }
     };
     
+    // Handle create button
+    const handleCreate = () => {
+        const title = input.value.trim();
+        if (title) {
+            // Clean up listener BEFORE closing modal
+            input.removeEventListener('keydown', onKeydown);
+            modal.classList.add('hidden');
+            createNewPage(title);
+        } else {
+            showToast('ページ名を入力してください');
+        }
+    };
+    
+    // Handle cancel
+    const handleCancel = () => {
+        // Clean up listener BEFORE closing modal
+        input.removeEventListener('keydown', onKeydown);
+        modal.classList.add('hidden');
+        // Reset app selector to previous value
+        const appSelector = /** @type {HTMLSelectElement} */(document.getElementById('appSelector'));
+        if (appSelector) appSelector.value = App.target.id || '';
+    };
+    
     // Add event listeners with {once: true} to auto-cleanup
     createBtn.addEventListener('click', handleCreate, {once: true});
     cancelBtn.addEventListener('click', handleCancel, {once: true});
     closeBtn.addEventListener('click', handleCancel, {once: true});
     input.addEventListener('keydown', onKeydown);
-    
-    // Remove keydown listener when modal closes
-    const removeKeyListener = () => {
-        input.removeEventListener('keydown', onKeydown);
-    };
-    createBtn.addEventListener('click', removeKeyListener, {once: true});
-    cancelBtn.addEventListener('click', removeKeyListener, {once: true});
-    closeBtn.addEventListener('click', removeKeyListener, {once: true});
 }
 window.openNewPageModal = openNewPageModal;
 
 async function createNewPage(title) {
     setLoading(true, "ページ作成中...");
     try {
+        const reqBody = { page_name: title };
         const res = await fetch('/api/pages/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ page_name: title })
+            body: JSON.stringify(reqBody)
         });
         
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            const errText = await res.text();
+            recordApiCall('/api/pages/create', 'POST', reqBody, null, errText, res.status);
+            throw new Error(errText);
+        }
         
+        /** @type {CreatePageApiResponse} */
         const data = await res.json();
+        recordApiCall('/api/pages/create', 'POST', reqBody, data, null, res.status);
         showToast(`ページ「${title}」を作成しました`);
         
-        // ターゲットリスト再読み込み
-        localStorage.removeItem(App.cache.KEYS.TARGETS);
-        await loadTargets();
+        // ターゲットリスト再読み込み（強制更新で最新のリストを取得）
+        await loadTargets(true);
         
-        // 作成したページを選択
+        // 作成したページを選択（skipRefresh=true でリスト再取得を防止）
         /** @type {HTMLSelectElement | null} */
         const selector = /** @type {any} */(document.getElementById('appSelector'));
         if (selector) {
             selector.value = data.id;
-            handleTargetChange();
+            handleTargetChange(true);
         }
         
     } catch(e) {
-        showToast(`作成失敗: ${e.message}`);
+        const errorMessage = /** @type {Error} */(e).message;
+        showToast(`作成失敗: ${errorMessage}`);
     } finally {
         setLoading(false);
     }
@@ -939,7 +1037,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // EnterのみはチャットAI送信とする（仕様確認要だが既存踏襲）
                 
                 const text = /** @type {HTMLTextAreaElement} */(memoInput).value.trim();
-                if (text || App.image.base64) {
+                if (text || App.image.data) {
                     handleChatAI(text);
                 }
             }
@@ -960,6 +1058,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Cache housekeeping (remove expired items before loading new data)
+    cleanUpCache();
+    
     // Initial Loads
     loadTargets();      // Load Notion targets
     loadChatHistory();  // Load chat history
@@ -989,17 +1090,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Models
     loadAvailableModels();
     
-    // Session Clear Button
-    const sessionClearBtn = document.getElementById('sessionClearBtn');
-    if (sessionClearBtn) {
-        sessionClearBtn.addEventListener('click', handleSessionClear);
-    }
-    
-    // View Content Button
-    const viewContentBtn = document.getElementById('viewContentBtn');
-    if (viewContentBtn) {
-        viewContentBtn.addEventListener('click', openContentModal);
-    }
 });
 
 // UI Event Handlers defined in HTML (onclick) need to be globablly accessible
@@ -1018,7 +1108,8 @@ function fillForm(properties) {
     // Original implementation looked for inputs directly
     const inputs = document.querySelectorAll('#propertiesForm .prop-input');
     
-    inputs.forEach(/** @param {HTMLElement} input */ input => {
+    inputs.forEach(/** @param {Element} el */ el => {
+        const input = /** @type {HTMLElement} */(el);
         const key = input.dataset?.key;
         const type = input.dataset?.type;
         const value = properties[key];
@@ -1155,6 +1246,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (appSelector) {
         // Wrap handleTargetChange to match event listener signature
         appSelector.addEventListener('change', () => handleTargetChange(false));
+        
+        // Refresh list when selector is clicked/opened (to detect deleted pages)
+        // Throttle: Don't refresh if last refresh was within 5 seconds
+        appSelector.addEventListener('click', () => {
+            const now = Date.now();
+            const timeSinceLastRefresh = now - App.cache.lastTargetRefresh;
+            const THROTTLE_MS = 5000; // 5 seconds
+            
+            if (timeSinceLastRefresh < THROTTLE_MS) {
+                debugLog(`[appSelector] Clicked but skipping refresh (last refresh was ${Math.round(timeSinceLastRefresh / 1000)}s ago)`);
+                return;
+            }
+            
+            debugLog('[appSelector] Clicked - refreshing target list');
+            loadTargets(true);
+        });
     }
     
     // State display toggle button

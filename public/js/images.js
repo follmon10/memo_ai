@@ -27,7 +27,7 @@ export function compressImage(file, maxDimension = 600, quality = 0.7) {
                     }
                 }
                 
-                console.log(`[Image Compress] Original: ${img.width}x${img.height}, Compressed: ${width}x${height}`);
+
                 
                 // Create canvas and compress
                 const canvas = document.createElement('canvas');
@@ -53,7 +53,7 @@ export function compressImage(file, maxDimension = 600, quality = 0.7) {
             };
             
             img.onerror = () => reject(new Error('Failed to load image'));
-            img.src = e.target.result;
+            img.src = /** @type {string} */(e.target.result);
         };
         
         reader.onerror = () => reject(new Error('Failed to read file'));
@@ -103,8 +103,10 @@ export async function capturePhotoFromCamera() {
             
             document.body.appendChild(modal);
             
-            const video = document.getElementById('cameraPreview');
-            const canvas = document.getElementById('cameraCanvas');
+            /** @type {HTMLVideoElement} */
+            const video = /** @type {any} */(document.getElementById('cameraPreview'));
+            /** @type {HTMLCanvasElement} */
+            const canvas = /** @type {any} */(document.getElementById('cameraCanvas'));
             const captureBtn = document.getElementById('capturePhoto');
             const cancelBtn = document.getElementById('cancelCamera');
             const closeBtn = document.getElementById('closeCameraModal');
@@ -184,12 +186,13 @@ export async function capturePhotoFromCamera() {
             }
             
             // Translate common errors
-            let errorMsg = err.message;
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            const error = /** @type {Error} */(err);
+            let errorMsg = error.message;
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                 errorMsg = 'カメラへのアクセスが拒否されました';
-            } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
                 errorMsg = 'カメラが見つかりませんでした';
-            } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
                 errorMsg = 'カメラは別のアプリケーションで使用中です';
             }
             
@@ -208,7 +211,7 @@ export function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-            const result = reader.result; // data:image/jpeg;base64,...
+            const result = /** @type {string} */(reader.result); // data:image/jpeg;base64,...
             // Extract core base64 and mime type
             const matches = result.match(/^data:(.+);base64,(.+)$/);
             if (matches && matches.length === 3) {
@@ -226,29 +229,86 @@ export function readFileAsBase64(file) {
     });
 }
 
+/**
+ * Update visibility of the shared attachment area based on children
+ */
+function updateAttachmentAreaVisibility() {
+    const attachmentArea = document.getElementById('imageAttachmentArea');
+    const previewArea = document.getElementById('imagePreviewArea');
+    const genTagArea = document.getElementById('imageGenTagArea');
+    if (!attachmentArea) return;
+
+    const hasPreview = previewArea && !previewArea.classList.contains('hidden');
+    const hasGenTag = genTagArea && !genTagArea.classList.contains('hidden');
+
+    if (hasPreview || hasGenTag) {
+        attachmentArea.classList.remove('hidden');
+    } else {
+        attachmentArea.classList.add('hidden');
+    }
+}
+
 export function setPreviewImage(base64, mimeType) {
-    console.log('[Preview] Setting preview image, mime:', mimeType, 'size:', base64.length, 'chars');
-    window.App.image.base64 = base64;
+
+    window.App.image.data = base64;
     window.App.image.mimeType = mimeType;
     
     const previewArea = document.getElementById('imagePreviewArea');
-    const previewImg = document.getElementById('previewImg');
+    /** @type {HTMLImageElement} */
+    const previewImg = /** @type {any} */(document.getElementById('imagePreview'));
     
     previewImg.src = `data:${mimeType};base64,${base64}`;
     previewArea.classList.remove('hidden');
-    console.log('[Preview] Preview area shown');
+    updateAttachmentAreaVisibility();
+
 }
 
 export function clearPreviewImage() {
-    console.log('[Preview] Clearing preview image');
-    window.App.image.base64 = null;
+
+    window.App.image.data = null;
     window.App.image.mimeType = null;
     
     const previewArea = document.getElementById('imagePreviewArea');
-    const previewImg = document.getElementById('previewImg');
+    /** @type {HTMLImageElement} */
+    const previewImg = /** @type {any} */(document.getElementById('imagePreview'));
     
     previewImg.src = '';
-    previewArea.classList.add('hidden');
+    if (previewArea) {
+        previewArea.classList.add('hidden');
+    }
+    updateAttachmentAreaVisibility();
+    
+    window.debugLog('🗑️ Image preview cleared');
+}
+
+/**
+ * 画像生成モードを有効化
+ */
+export function enableImageGenMode() {
+    window.App.image.generationMode = true;
+    
+    const genTagArea = document.getElementById('imageGenTagArea');
+    if (genTagArea) {
+        genTagArea.classList.remove('hidden');
+    }
+    updateAttachmentAreaVisibility();
+    
+    window.debugLog('🎨 Image generation mode enabled');
+}
+
+/**
+ * 画像生成モードを無効化
+ */
+export function disableImageGenMode() {
+    window.App.image.generationMode = false;
+    
+    const genTagArea = document.getElementById('imageGenTagArea');
+    if (genTagArea) {
+        genTagArea.classList.add('hidden');
+    }
+    updateAttachmentAreaVisibility();
+    
+    window.debugLog('🗑️ Image generation mode disabled');
 }
 
 /**
@@ -266,8 +326,10 @@ export function setupImageHandlers() {
     const galleryBtn = document.getElementById('galleryBtn');
     
     // Hidden inputs
-    const imageInput = document.getElementById('imageInput'); // For Gallery
-    const cameraInput = document.getElementById('cameraInput'); // For Mobile Camera
+    /** @type {HTMLInputElement} */
+    const imageInput = /** @type {any} */(document.getElementById('imageInput')); // For Gallery
+    /** @type {HTMLInputElement} */
+    const cameraInput = /** @type {any} */(document.getElementById('cameraInput')); // For Mobile Camera
     
     // 1. Toggle Media Menu
     if (addMediaBtn && mediaMenu) {
@@ -278,7 +340,7 @@ export function setupImageHandlers() {
         
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
-            if (!addMediaBtn.contains(e.target) && !mediaMenu.contains(e.target)) {
+            if (!addMediaBtn.contains(/** @type {Node} */(e.target)) && !mediaMenu.contains(/** @type {Node} */(e.target))) {
                 mediaMenu.classList.add('hidden');
             }
         });
@@ -294,7 +356,7 @@ export function setupImageHandlers() {
         });
         
         imageInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
+            const file = /** @type {HTMLInputElement} */(e.target).files[0];
             if (!file) return;
             
             try {
@@ -335,7 +397,7 @@ export function setupImageHandlers() {
     // Handle mobile camera input changes
     if (cameraInput) {
         cameraInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
+            const file = /** @type {HTMLInputElement} */(e.target).files[0];
             if (!file) return;
             
             try {
@@ -351,6 +413,38 @@ export function setupImageHandlers() {
             }
         });
     }
+
+    // 4. Remove Image Handler
+    const removeImageBtn = document.getElementById('removeImageBtn');
+    if (removeImageBtn) {
+        removeImageBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent bubbling
+            clearPreviewImage();
+            
+            // Reset inputs to allow selecting the same file again
+            // Note: imageInput and cameraInput are defined in the closure of setupImageHandlers
+            if (imageInput) imageInput.value = '';
+            if (cameraInput) cameraInput.value = '';
+        });
+    }
     
-    console.log('[Images] Event handlers initialized (Refactored)');
+    // 5. Image Generation Button Handler
+    const imageGenBtn = document.getElementById('imageGenBtn');
+    if (imageGenBtn) {
+        imageGenBtn.addEventListener('click', () => {
+            enableImageGenMode();
+            if (mediaMenu) mediaMenu.classList.add('hidden');
+           showToast('画像生成モードを有効にしました');
+        });
+    }
+    
+    // 6. Remove Image Generation Tag Handler
+    const removeImageGenBtn = document.getElementById('removeImageGenBtn');
+    if (removeImageGenBtn) {
+        removeImageGenBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            disableImageGenMode();
+        });
+    }
+
 }
