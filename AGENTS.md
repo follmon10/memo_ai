@@ -66,8 +66,10 @@ python -m uvicorn api.index:app --reload --host 0.0.0.0
 | `AGENTS.md` | このファイル（全体ルール・構造マップ） |
 | `README.md` | プロジェクト概要・セットアップ手順 |
 | `.env` / `.env.example` | 環境変数（APIキー、モデル設定など） |
+| `.gitignore` | Git除外設定 |
 | `requirements.txt` | Python依存パッケージ |
 | `pyproject.toml` | Python プロジェクト設定（ruff, pytest等） |
+| `pytest.ini` | pytest設定（テスト検出・オプション） |
 | `package.json` | npm設定（TypeScriptの型チェック用） |
 | `tsconfig.json` | TypeScript設定（JSDocベースの型チェック） |
 | `vercel.json` | Vercelデプロイ設定（ルーティング、関数設定） |
@@ -124,6 +126,7 @@ python -m uvicorn api.index:app --reload --host 0.0.0.0
 | ファイル | 責務 |
 | :--- | :--- |
 | `AGENTS.md` | テスト固有ルール |
+| `__init__.py` | パッケージ初期化 |
 | `conftest.py` | **共通フィクスチャ** — モック設定、テスト用ヘルパー関数 |
 | `test_api_contract.py` | **API契約テスト** — JS↔Backendのエンドポイント整合性を自動検証 |
 | `test_html_js_consistency.py` | **HTML/JS整合性テスト** — HTML内のIDとJSの参照整合性を検証 |
@@ -141,6 +144,10 @@ python -m uvicorn api.index:app --reload --host 0.0.0.0
 | `test_model_discovery.py` | モデル発見機能テスト |
 | `test_json_mode_integration.py` | JSON Mode統合テスト |
 | `test_image_gen_fix.py` | 画像生成修正の検証テスト |
+| `debug_gemini_image_response.py` | デバッグ用: Gemini画像レスポンス検証スクリプト |
+| `inspect_images.py` | デバッグ用: 画像データ検査スクリプト |
+| `verify_e2e_image_gen.py` | デバッグ用: 画像生成E2E検証スクリプト |
+| `manual/` | 手動テスト用スクリプト（Notion APIバージョン互換性チェック等） |
 
 ---
 
