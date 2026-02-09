@@ -12,16 +12,11 @@ import asyncio
 import traceback
 
 from api.logger import setup_logger
-
-logger = setup_logger(__name__)
-
-# グローバル変数（index.pyから参照）
 from api.config import (
     DEBUG_MODE,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEXT_MODEL,
     DEFAULT_MULTIMODAL_MODEL,
-    NOTION_BLOCK_CHAR_LIMIT,
     NOTION_CONTENT_MAX_LENGTH,
 )
 from api.notion import (
@@ -37,14 +32,12 @@ from api.models import (
     get_text_models,
     get_vision_models,
     get_image_generation_models,
+    _PROVIDER_ERRORS,
 )
 from api.schemas import AnalyzeRequest, ChatRequest, SaveRequest
-
 from api.rate_limiter import rate_limiter
 
-# rate_limiterはindex.pyから参照が必要（循環参照回避のため）
-# → rate_limiterモジュールから直接インポートすることで循環参照を解決済み
-
+logger = setup_logger(__name__)
 
 # FastAPI Router
 router = APIRouter()
@@ -153,6 +146,7 @@ async def get_models(all: bool = False):
             "text_availability": text_availability,
             "multimodal_availability": multimodal_availability,
             "image_generation_availability": image_generation_availability,
+            **({"provider_errors": _PROVIDER_ERRORS} if _PROVIDER_ERRORS else {}),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -554,7 +548,6 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
         try:
             schema_result = await get_schema(target_id, request)
             schema = schema_result.get("schema", {})
-            target_type = schema_result.get("type", "database")
 
         except Exception as schema_error:
             logger.warning("[Chat] Schema fetch error: %s", schema_error)
