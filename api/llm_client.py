@@ -351,9 +351,9 @@ async def generate_image_response(prompt: str, model: str) -> Dict[str, Any]:
                 )
                 if hasattr(message, "images"):
                     logger.error("[Image Gen] Images array: %s", message.images)
-                # Geminiのテキスト応答を保持してエラーを生成
+                # AIのテキスト応答を保持してエラーを生成（デバッグ用）
                 error = RuntimeError("Geminiが画像を生成できませんでした")
-                error.gemini_text = message_text[:300] if message_text else None
+                error.ai_response_text = message_text[:300] if message_text else None
                 raise error
 
         else:
@@ -444,8 +444,4 @@ async def generate_image_response(prompt: str, model: str) -> Dict[str, Any]:
             error=str(e),
         )
 
-        new_error = RuntimeError(f"Image generation failed: {str(e)}")
-        # gemini_text属性を転送（上位のai.pyがデバッグ情報として利用）
-        if hasattr(e, "gemini_text"):
-            new_error.gemini_text = e.gemini_text
-        raise new_error from e
+        raise RuntimeError(f"Image generation failed: {str(e)}") from e

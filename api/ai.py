@@ -10,7 +10,6 @@ import json
 from typing import Dict, Any, List, Optional
 
 from api.llm_client import generate_json, prepare_multimodal_prompt
-from api.config import DEBUG_MODE
 from api.models import select_model_for_input
 from api.services import extract_plain_text
 from api.logger import setup_logger
@@ -370,12 +369,7 @@ async def chat_analyze_text_with_ai(
             if "Image generation failed: " in error_msg:
                 error_msg = error_msg.replace("Image generation failed: ", "")
 
-            # Geminiのテキスト応答があれば取得（デバッグ用）
-            gemini_text = getattr(e, "gemini_text", None) or (
-                getattr(e.__cause__, "gemini_text", None) if e.__cause__ else None
-            )
-
-            result = {
+            return {
                 "message": f"⚠️ 画像は生成されませんでした\n{error_msg}",
                 "image_base64": None,
                 "properties": None,
@@ -389,12 +383,6 @@ async def chat_analyze_text_with_ai(
                     "fallback_occurred": False,
                 },
             }
-
-            # デバッグモード時のみGeminiの応答テキストを含める（セキュリティ）
-            if DEBUG_MODE and gemini_text:
-                result["_debug_gemini_response"] = gemini_text
-
-            return result
 
     # 通常のテキスト/画像認識モードの処理（既存ロジック）
     # 画像の有無に基づくモデル自動選択

@@ -170,9 +170,9 @@ class TestGenerateImageResponse:
 
         # 外側のexceptで "Image generation failed: ..." にラップされる
         assert "Image generation failed" in str(exc_info.value)
-        # gemini_text属性が転送されていること
-        assert hasattr(exc_info.value, "gemini_text")
-        assert "画像は生成できません" in exc_info.value.gemini_text
+        # ai_response_text属性は__cause__（元のエラー）に保持される
+        assert hasattr(exc_info.value.__cause__, "ai_response_text")
+        assert "画像は生成できません" in exc_info.value.__cause__.ai_response_text
 
     @pytest.mark.asyncio
     async def test_gemini_no_text_no_image_raises(self):
@@ -199,8 +199,8 @@ class TestGenerateImageResponse:
                         "test", "gemini/gemini-2.5-flash-image"
                     )
 
-        assert hasattr(exc_info.value, "gemini_text")
-        assert exc_info.value.gemini_text is None
+        assert hasattr(exc_info.value.__cause__, "ai_response_text")
+        assert exc_info.value.__cause__.ai_response_text is None
 
     @pytest.mark.asyncio
     async def test_openai_empty_response_raises(self):
@@ -251,7 +251,7 @@ class TestImageGenFailureInChatAI:
         from api.ai import chat_analyze_text_with_ai
 
         error = RuntimeError("Image generation failed: Geminiが画像を生成できませんでした")
-        error.gemini_text = "テスト用のGemini応答テキスト"
+        error.ai_response_text = "テスト用のGemini応答テキスト"
 
         with patch("api.llm_client.generate_image_response", new_callable=AsyncMock) as mock_gen:
             mock_gen.side_effect = error
@@ -265,47 +265,8 @@ class TestImageGenFailureInChatAI:
         assert result["_image_gen_failed"] is True
         assert "画像は生成されませんでした" in result["message"]
         assert result["image_base64"] is None
+        # セキュリティ: AIの生応答テキストはレスポンスに含まれない
+        assert "_debug_ai_response" not in result
 
-    @pytest.mark.asyncio
-    async def test_image_gen_failure_debug_mode_includes_gemini_response(self):
-        """DEBUG_MODE時に _debug_gemini_response が含まれること"""
-        from api.ai import chat_analyze_text_with_ai
-
-        error = RuntimeError("Geminiが画像を生成できませんでした")
-        error.gemini_text = "Geminiからの応答テキスト"
-
-        with patch("api.llm_client.generate_image_response", new_callable=AsyncMock) as mock_gen:
-            mock_gen.side_effect = error
-            with patch("api.ai.DEBUG_MODE", True):
-                result = await chat_analyze_text_with_ai(
-                    text="犬の絵を描いて",
-                    schema={"title": {"type": "title"}},
-                    system_prompt="test",
-                    image_generation=True,
-                )
-
-        assert result["_image_gen_failed"] is True
-        assert result.get("_debug_gemini_response") == "Geminiからの応答テキスト"
-
-    @pytest.mark.asyncio
-    async def test_image_gen_failure_non_debug_mode_hides_gemini_response(self):
-        """非DEBUG_MODE時に _debug_gemini_response が含まれないこと（セキュリティ）"""
-        from api.ai import chat_analyze_text_with_ai
-
-        error = RuntimeError("Geminiが画像を生成できませんでした")
-        error.gemini_text = "秘密の応答テキスト"
-
-        with patch("api.llm_client.generate_image_response", new_callable=AsyncMock) as mock_gen:
-            mock_gen.side_effect = error
-            with patch("api.ai.DEBUG_MODE", False):
-                result = await chat_analyze_text_with_ai(
-                    text="絵を描いて",
-                    schema={"title": {"type": "title"}},
-                    system_prompt="test",
-                    image_generation=True,
-                )
-
-        assert result["_image_gen_failed"] is True
-        assert "_debug_gemini_response" not in result
 
 
