@@ -19,6 +19,9 @@ logger = setup_logger(__name__)
 # (ローカル開発では LITELLM_VERBOSE 環境変数で制御可能)
 IS_VERCEL = os.environ.get("VERCEL") == "1"
 litellm.set_verbose = False if IS_VERCEL else LITELLM_VERBOSE
+# Vercel環境: LiteLLM内部loggerのANSIカラーコードを除去（ログ自体は維持）
+from api.logger import configure_third_party_loggers
+configure_third_party_loggers()
 
 # デバッグ用: 直近10件のLLM API通信ログ
 llm_api_log = deque(maxlen=10)
