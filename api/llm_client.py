@@ -223,7 +223,7 @@ async def generate_json(prompt: Any, model: str, retries: int = None) -> Dict[st
 
         except Exception as e:
             if attempt == retries:
-                # 最大リトライ回数に達した場合はエラーを再送出
+                # 最大リトライ回数に達した場合 - 最下層なのでexc_info=Trueでフルトレースバック出力
                 logger.error("Generation failed after %d retries: %s", retries, e, exc_info=True)
                 # ログ記録（エラー時）
                 _record_llm_log(
@@ -343,16 +343,11 @@ async def generate_image_response(prompt: str, model: str) -> Dict[str, Any]:
                 message_text = "画像を生成しました"
 
             if not image_base64:
-                # エラーメッセージにAIの応答要約を含める（ユーザーが原因を把握可能に）
+                # API成功だが画像なし → エラーメッセージにAI応答要約を含めて原因を明示
                 if message_text:
                     truncated = (message_text[:100] + "...") if len(message_text) > 100 else message_text
-                    logger.warning(
-                        "[Image Gen] 画像なし - AIがテキストで応答: \"%s\"",
-                        truncated,
-                    )
                     raise RuntimeError(f"AIが画像ではなくテキストで応答しました:\n{truncated}")
                 else:
-                    logger.warning("[Image Gen] 画像なし - AIからテキストも画像も返されませんでした")
                     raise RuntimeError("AIから画像データが返されませんでした")
 
         else:
@@ -430,6 +425,7 @@ async def generate_image_response(prompt: str, model: str) -> Dict[str, Any]:
 
     except Exception as e:
         duration = time.time() - start_time
+        # 最下層キャッチ: exc_info=Trueでフルトレースバック出力（上位層では省略）
         logger.error("[Image Gen] API error: %s", e, exc_info=True)
 
         _record_llm_log(

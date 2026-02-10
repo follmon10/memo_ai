@@ -535,7 +535,7 @@ async def analyze_endpoint(request: Request, analyze_req: AnalyzeRequest):
             },
         )
     except Exception as e:
-        logger.error("[AI Analysis Error] %s: %s", type(e).__name__, e, exc_info=True)
+        logger.error("[AI Analysis Error] %s: %s", type(e).__name__, e)
 
 
         raise HTTPException(
@@ -616,7 +616,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
                 },
             )
         except Exception as ai_error:
-            logger.error("[Chat AI Error] %s: %s", type(ai_error).__name__, ai_error, exc_info=True)
+            logger.error("[Chat AI Error] %s: %s", type(ai_error).__name__, ai_error)
     
 
             raise HTTPException(
@@ -629,7 +629,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("[Chat Endpoint Error] %s", e, exc_info=True)
+        logger.error("[Chat Endpoint Error] %s", e)
 
 
         raise HTTPException(

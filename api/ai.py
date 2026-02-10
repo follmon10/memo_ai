@@ -364,7 +364,7 @@ async def chat_analyze_text_with_ai(
 
         except Exception as e:
             error_msg = str(e)
-            # RuntimeError("Image generation failed: ...") のラッパー部分を除去
+            # llm_client.pyで "Image generation failed: ..." にラップされるため除去
             if "Image generation failed: " in error_msg:
                 error_msg = error_msg.replace("Image generation failed: ", "")
 
@@ -460,7 +460,8 @@ Restraints:
         json_resp = result["content"]
 
     except Exception as e:
-        logger.error("[Chat AI] LLM generation failed: %s", e, exc_info=True)
+        # 上位層: llm_client.pyで既にトレースバック出力済みのためメッセージのみログ
+        logger.error("[Chat AI] LLM generation failed: %s", e)
         # エラーメッセージをユーザーに返す
         error_msg = str(e)
         user_msg = "申し訳ありません。AIの応答生成中にエラーが発生しました。"
@@ -528,7 +529,7 @@ Restraints:
                 logger.info("[Chat AI] Recovered via brace wrapping: %s", data)
                 data["_json_recovered"] = True
             except Exception as e:
-                logger.error("[Chat AI] All recovery attempts failed: %s", e, exc_info=True)
+                logger.error("[Chat AI] All recovery attempts failed: %s", e)
                 data = {
                     "message": "AIの応答を解析できませんでした。",
                     "raw_response": json_resp,
