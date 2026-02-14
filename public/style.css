@@ -169,7 +169,7 @@ body {
 }
 
 .chat-bubble.user {
-    background: var(--line-bubble-user);
+    background: #00FFFF;
     color: #000;
     align-self: flex-end;
     border-top-right-radius: 4px;
